@@ -96,7 +96,7 @@ EXERCISES = [
              spring_setting="", reps=5, duration_seconds=60),
     Exercise("br_pelvic_lift", "Pelvic Lift/Hinge Bridge", "bridges", ["mat"], "beginner",
              spring_setting="", reps=5, duration_seconds=45),
-    Exercise("br_single_leg", "Single Leg Bridge", "bridges", ["mat"], "intermediate",
+    Exercise("br_single_leg", "Single Leg Bridge", "bridges", ["mat"], "advanced",  # CPTT: A
              spring_setting="", reps=5, duration_seconds=60),
     Exercise("br_shoulder_bridge", "Shoulder Bridge", "bridges", ["mat", "reformer"], "intermediate",
              spring_setting="1R+1B", reps=3, duration_seconds=60),
@@ -116,7 +116,7 @@ EXERCISES = [
              spring_setting="", reps=5, duration_seconds=60),
 
     # Abdominals (light-medium springs) - Manual: Hundred=10 cycles, Coordination=5 reps
-    Exercise("ab_hundred", "Hundred", "abdominals", ["mat", "reformer"], "beginner",
+    Exercise("ab_hundred", "Hundred", "abdominals", ["mat", "reformer"], "intermediate",  # CPTT: I/A mat, I reformer
              spring_setting="1R or 1B", reps=10, duration_seconds=90),  # 10 breathing cycles
     Exercise("ab_roll_up", "Roll Up", "abdominals", ["mat", "reformer"], "intermediate",
              spring_setting="1R", reps=5, duration_seconds=60),
@@ -124,7 +124,7 @@ EXERCISES = [
              spring_setting="", reps=10, duration_seconds=120),  # 10 reps each of 5 exercises
     Exercise("ab_coordination", "Coordination", "abdominals", ["reformer"], "intermediate",
              spring_setting="1R+1B", reps=5, duration_seconds=60),
-    Exercise("ab_teaser", "Teaser", "abdominals", ["mat", "reformer"], "advanced",
+    Exercise("ab_teaser", "Teaser", "abdominals", ["mat", "reformer"], "intermediate",  # CPTT: I/A mat
              spring_setting="1R", reps=3, duration_seconds=60),
     Exercise("ab_criss_cross", "Criss Cross", "abdominals", ["mat"], "intermediate",
              spring_setting="", reps=8, duration_seconds=60),
@@ -134,7 +134,7 @@ EXERCISES = [
              spring_setting="", reps=3, duration_seconds=30),  # Hold position
     Exercise("pl_long_stretch", "Long Stretch", "plank", ["reformer"], "intermediate",
              spring_setting="1R+1B", reps=5, duration_seconds=45),
-    Exercise("pl_up_stretch", "Up Stretch", "plank", ["reformer"], "intermediate",
+    Exercise("pl_up_stretch", "Up Stretch", "plank", ["reformer"], "advanced",  # CPTT: A
              spring_setting="1R+1B", reps=5, duration_seconds=45),
     Exercise("pl_elephant", "Elephant", "plank", ["reformer"], "intermediate",
              spring_setting="1R+1B", reps=5, duration_seconds=45),
@@ -165,17 +165,17 @@ EXERCISES = [
              spring_setting="", reps=10, duration_seconds=60),
     Exercise("lb_standing_leg", "Standing Leg Series", "lower_body", ["reformer", "chair"], "intermediate",
              spring_setting="1R+1B", reps=8, duration_seconds=90),
-    Exercise("lb_side_splits", "Side Splits", "lower_body", ["reformer"], "advanced",
+    Exercise("lb_side_splits", "Side Splits", "lower_body", ["reformer"], "intermediate",  # CPTT: I
              spring_setting="1R", reps=5, duration_seconds=60),
     Exercise("lb_lunges", "Lunges", "lower_body", ["reformer", "chair"], "intermediate",
              spring_setting="1R+1B", reps=5, duration_seconds=60),
-    Exercise("lb_scooter", "Scooter", "lower_body", ["reformer"], "intermediate",
+    Exercise("lb_scooter", "Scooter", "lower_body", ["reformer"], "beginner",  # CPTT: B
              spring_setting="1R+1B", reps=8, duration_seconds=45),
 
     # Lateral Line (light-medium springs) - Manual: Mermaid=5 each side
     Exercise("ll_side_lying", "Side Lying Series", "lateral_line", ["mat", "reformer"], "beginner",
              spring_setting="1R", reps=8, duration_seconds=90),
-    Exercise("ll_mermaid", "Mermaid", "lateral_line", ["reformer", "mat", "chair"], "intermediate",
+    Exercise("ll_mermaid", "Mermaid", "lateral_line", ["reformer", "mat", "chair"], "beginner",  # CPTT: B
              spring_setting="1R", reps=5, duration_seconds=60),  # 5 each side
     Exercise("ll_side_bend", "Side Bend", "lateral_line", ["mat"], "intermediate",
              spring_setting="", reps=5, duration_seconds=45),
@@ -183,15 +183,15 @@ EXERCISES = [
              spring_setting="1R", reps=8, duration_seconds=60),
 
     # Prone/Extension (light springs) - Manual: Swan=5, Swimming=5 sets
-    Exercise("pe_swan", "Swan", "prone_extension", ["mat", "reformer"], "beginner",
+    Exercise("pe_swan", "Swan", "prone_extension", ["mat", "reformer"], "intermediate",  # CPTT: I/A mat, I reformer
              spring_setting="1B", reps=5, duration_seconds=45),
-    Exercise("pe_swimming", "Swimming", "prone_extension", ["mat"], "intermediate",
+    Exercise("pe_swimming", "Swimming", "prone_extension", ["mat"], "beginner",  # CPTT: B mat
              spring_setting="", reps=5, duration_seconds=45),  # 5 sets
-    Exercise("pe_pulling_straps", "Pulling Straps", "prone_extension", ["reformer"], "intermediate",
+    Exercise("pe_pulling_straps", "Pulling Straps", "prone_extension", ["reformer"], "beginner",  # CPTT: B/I
              spring_setting="1R", reps=5, duration_seconds=60),
     Exercise("pe_back_extension", "Back Extension", "prone_extension", ["chair", "barrel"], "intermediate",
              spring_setting="1@2", reps=5, duration_seconds=60),
-    Exercise("pe_rocking", "Rocking", "prone_extension", ["mat"], "advanced",
+    Exercise("pe_rocking", "Rocking", "prone_extension", ["mat"], "intermediate",  # CPTT: I/A
              spring_setting="", reps=5, duration_seconds=45),
 
     # Full Body Integration (various) - Manual: 3-5 reps for advanced exercises
