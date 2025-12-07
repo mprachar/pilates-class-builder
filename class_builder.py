@@ -118,6 +118,16 @@ EXERCISES = [
              spring_setting="", reps=5, duration_seconds=60),
 
     # Abdominals (light-medium springs) - Manual: Hundred=10 cycles, Coordination=5 reps
+    # Beginner ab exercises
+    Exercise("ab_hundred_prep", "Hundred Prep", "abdominals", ["mat", "reformer"], "beginner",
+             spring_setting="1R or 1B", reps=5, duration_seconds=60),  # Modified hundred for beginners
+    Exercise("ab_chest_lift", "Chest Lift", "abdominals", ["mat", "reformer"], "beginner",
+             spring_setting="1R", reps=8, duration_seconds=45),
+    Exercise("ab_supine_twist", "Supine Twist", "abdominals", ["mat"], "beginner",
+             spring_setting="", reps=5, duration_seconds=45),
+    Exercise("ab_dead_bug", "Dead Bug", "abdominals", ["mat"], "beginner",
+             spring_setting="", reps=8, duration_seconds=60),
+    # Intermediate ab exercises
     Exercise("ab_hundred", "Hundred", "abdominals", ["mat", "reformer"], "intermediate",  # CPTT: I/A mat, I reformer
              spring_setting="1R or 1B", reps=10, duration_seconds=90),  # 10 breathing cycles
     Exercise("ab_roll_up", "Roll Up", "abdominals", ["mat", "reformer"], "intermediate",
@@ -142,6 +152,8 @@ EXERCISES = [
     # Plank (various springs) - Manual: 3-5 reps
     Exercise("pl_front_plank", "Front Plank", "plank", ["mat"], "beginner",
              spring_setting="", reps=3, duration_seconds=30),  # Hold position
+    Exercise("pl_knee_stretch", "Knee Stretch", "plank", ["reformer"], "beginner",
+             spring_setting="1R+1B", reps=8, duration_seconds=45),
     Exercise("pl_long_stretch", "Long Stretch", "plank", ["reformer"], "intermediate",
              spring_setting="1R+1B", reps=5, duration_seconds=45),
     Exercise("pl_up_stretch", "Up Stretch", "plank", ["reformer"], "advanced",  # CPTT: A
@@ -154,6 +166,8 @@ EXERCISES = [
              spring_setting="1@2", reps=8, duration_seconds=45),
 
     # Upper Body (light-medium springs) - Manual: Arm Circles=10, Rowing series
+    Exercise("ub_arm_circles", "Arm Circles", "upper_body", ["mat"], "beginner",
+             spring_setting="", reps=10, duration_seconds=45),
     Exercise("ub_arm_work", "Arm Work Series", "upper_body", ["reformer"], "beginner",
              spring_setting="1R or 1B", reps=10, duration_seconds=90,
              variations=["Biceps", "Triceps", "Chest", "Back"]),
@@ -205,6 +219,14 @@ EXERCISES = [
              spring_setting="", reps=5, duration_seconds=45),
 
     # Full Body Integration (various) - Manual: 3-5 reps for advanced exercises
+    # Beginner full body exercises
+    Exercise("fb_single_leg_stretch", "Single Leg Stretch", "full_body", ["mat"], "beginner",
+             spring_setting="", reps=8, duration_seconds=60),
+    Exercise("fb_rolling_like_ball", "Rolling Like a Ball", "full_body", ["mat"], "beginner",
+             spring_setting="", reps=6, duration_seconds=45),
+    Exercise("fb_full_body_stretch", "Full Body Stretch (Reformer)", "full_body", ["reformer"], "beginner",
+             spring_setting="1R", reps=5, duration_seconds=60),
+    # Intermediate and advanced
     Exercise("fb_control_balance", "Control Balance", "full_body", ["mat"], "advanced",
              spring_setting="", reps=3, duration_seconds=60),
     Exercise("fb_star", "Star", "full_body", ["reformer"], "advanced",
@@ -506,13 +528,8 @@ class ClassBuilder:
                 and self._level_matches(ex.level, level)
             ]
 
-            # Fallback: if no exercises match level, get ANY exercise for this section
-            if not available:
-                available = [
-                    ex for ex in self.exercises
-                    if ex.section == section["id"]
-                    and any(eq in allowed_equipment for eq in ex.equipment)
-                ]
+            # No fallback - if no exercises match level+equipment, section stays empty
+            # This prevents mismatch between generator and dropdown options
 
             # Select exercises to fill section time
             selected = []
@@ -582,9 +599,13 @@ class ClassBuilder:
                             current_equipment = equipment_choice
                             class_plan["equipment_flow"].append(equipment_choice)
 
+                        # Determine spring setting based on equipment choice
+                        # Mat exercises have NO springs - clear setting if using mat
+                        exercise_spring_setting = ex.spring_setting if equipment_choice != "mat" else ""
+
                         # Update spring and box tracking
-                        if ex.spring_setting:
-                            last_spring = ex.spring_setting
+                        if exercise_spring_setting:
+                            last_spring = exercise_spring_setting
                         last_box = ex.uses_box
 
                         is_first_exercise = False
@@ -594,7 +615,7 @@ class ClassBuilder:
                             "id": ex.id,
                             "name": ex.name,
                             "equipment": equipment_choice,
-                            "spring_setting": ex.spring_setting,
+                            "spring_setting": exercise_spring_setting,
                             "reps": ex.reps,
                             "duration_seconds": ex.duration_seconds,
                             "variations": ex.variations[:2] if ex.variations else [],

@@ -759,7 +759,7 @@
                                 {% endfor %}
                             </select>
                             <label for="maxTransitions" style="margin-top: 15px;">Max Transitions</label>
-                            <input type="number" id="maxTransitions" value="5" min="1" max="30" step="1">
+                            <input type="number" id="maxTransitions" value="6" min="1" max="30" step="1">
                         </div>
 
                         <div class="config-section">
@@ -870,8 +870,8 @@
         }
 
         function updateMaxTransitions() {
-            // Always default to 5 transitions regardless of level
-            document.getElementById('maxTransitions').value = 5;
+            // Always default to 6 transitions regardless of level (based on sample classes)
+            document.getElementById('maxTransitions').value = 6;
         }
 
         // Initialize equipment selections on page load
