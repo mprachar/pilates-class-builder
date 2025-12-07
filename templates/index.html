@@ -434,6 +434,13 @@
             white-space: nowrap;
         }
 
+        .spring-or {
+            font-size: 0.65rem;
+            color: #a0aec0;
+            margin: 0 4px;
+            font-style: italic;
+        }
+
         .exercise-equipment {
             background: #edf2f7;
             padding: 4px 12px;
@@ -489,6 +496,18 @@
             background: #667eea;
             color: white;
             border-style: solid;
+        }
+
+        .transition-indicator {
+            background: linear-gradient(90deg, #fbd38d 0%, #f6ad55 100%);
+            color: #744210;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            text-align: center;
+            border-left: 4px solid #dd6b20;
         }
 
         #equipment-flow {
@@ -681,6 +700,10 @@
                                 <div class="stat-value" id="transitions">0</div>
                                 <div class="stat-label">Transitions</div>
                             </div>
+                            <div class="stat">
+                                <div class="stat-value" id="transition-time">0</div>
+                                <div class="stat-label">Transition Mins</div>
+                            </div>
                         </div>
                     </div>
                     <div id="equipment-flow"></div>
@@ -716,10 +739,9 @@
         }
 
         function updateMaxTransitions() {
-            const levelSelect = document.getElementById('level');
-            const selectedOption = levelSelect.options[levelSelect.selectedIndex];
-            const maxTransitions = selectedOption.getAttribute('data-max-transitions');
-            document.getElementById('maxTransitions').value = maxTransitions;
+            // Always default to 5 transitions regardless of level
+            // Level-based defaults are just recommendations, not enforced
+            document.getElementById('maxTransitions').value = 5;
         }
 
         // Initialize equipment selections
@@ -735,39 +757,51 @@
             if (!springSetting) return '';
 
             // Parse patterns like "1R + 1B", "2R", "3R or 2R+1B"
-            // "or" means alternatives - only show the first option's dots
-            const springs = [];
+            // Show ALL alternatives' dots, separated by "or" text
 
-            // Split on "or" first to get alternatives, pick the first one
+            // Split on "or" to get alternatives
             const alternatives = springSetting.split(/\s+or\s+/i);
-            const firstOption = alternatives[0].trim();
+            const allSprings = [];
 
-            // Now split the first option on "+" and "," to get individual springs
-            const parts = firstOption.split(/\s*[\+,]\s*/);
+            alternatives.forEach((alternative, altIdx) => {
+                const springs = [];
+                const option = alternative.trim();
 
-            parts.forEach(part => {
-                const match = part.match(/(\d+)\s*([RBGY])/i);
-                if (match) {
-                    const count = parseInt(match[1]);
-                    const color = match[2].toUpperCase();
-                    const colorClass = {
-                        'R': 'spring-red',
-                        'B': 'spring-blue',
-                        'G': 'spring-green',
-                        'Y': 'spring-yellow'
-                    }[color] || 'spring-red';
+                // Split on "+" and "," to get individual springs
+                const parts = option.split(/\s*[\+,]\s*/);
 
-                    for (let i = 0; i < count; i++) {
-                        springs.push(`<span class="spring-circle ${colorClass}"></span>`);
+                parts.forEach(part => {
+                    const match = part.match(/(\d+)\s*([RBGY])/i);
+                    if (match) {
+                        const count = parseInt(match[1]);
+                        const color = match[2].toUpperCase();
+                        const colorClass = {
+                            'R': 'spring-red',
+                            'B': 'spring-blue',
+                            'G': 'spring-green',
+                            'Y': 'spring-yellow'
+                        }[color] || 'spring-red';
+
+                        for (let i = 0; i < count; i++) {
+                            springs.push(`<span class="spring-circle ${colorClass}"></span>`);
+                        }
                     }
+                });
+
+                if (springs.length > 0) {
+                    // Add "or" separator between alternatives
+                    if (altIdx > 0) {
+                        allSprings.push(`<span class="spring-or">or</span>`);
+                    }
+                    allSprings.push(...springs);
                 }
             });
 
-            if (springs.length === 0) {
+            if (allSprings.length === 0) {
                 return `<span class="spring-text">${springSetting}</span>`;
             }
 
-            return springs.join('') + `<span class="spring-text">${springSetting}</span>`;
+            return allSprings.join('') + `<span class="spring-text">${springSetting}</span>`;
         }
 
         // Fetch exercises by section for dropdowns
@@ -824,6 +858,8 @@
             document.getElementById('total-duration').textContent = data.duration_minutes;
             document.getElementById('total-exercises').textContent = data.total_exercises;
             document.getElementById('transitions').textContent = data.transitions || 0;
+            // Each transition takes ~30 seconds
+            document.getElementById('transition-time').textContent = Math.round((data.transitions || 0) * 0.5);
 
             // Display equipment flow
             const flowDiv = document.getElementById('equipment-flow');
@@ -835,6 +871,9 @@
             }
 
             container.innerHTML = '';
+
+            // Track previous exercise across all sections for transition detection
+            let prevExercise = null;
 
             data.sections.forEach((section, sectionIdx) => {
                 const sectionDiv = document.createElement('div');
@@ -848,7 +887,22 @@
                         `<option value="${opt.id}" ${opt.id === ex.id ? 'selected' : ''}>${opt.name}</option>`
                     ).join('');
 
+                    // Detect if this is a transition (spring or equipment change)
+                    let transitionHtml = '';
+                    if (prevExercise) {
+                        const springChanged = ex.spring_setting && ex.spring_setting !== prevExercise.spring_setting;
+                        const equipmentChanged = ex.equipment !== prevExercise.equipment;
+                        if (springChanged || equipmentChanged) {
+                            const changes = [];
+                            if (equipmentChanged) changes.push('Equipment');
+                            if (springChanged) changes.push('Springs');
+                            transitionHtml = `<div class="transition-indicator">${changes.join(' + ')} Change (~30s)</div>`;
+                        }
+                    }
+                    prevExercise = ex;
+
                     return `
+                        ${transitionHtml}
                         <div class="exercise-item" data-exercise-id="${ex.id}" data-section-id="${section.id}">
                             <div class="exercise-row-1">
                                 <span class="drag-handle">&#9776;</span>
@@ -1004,6 +1058,7 @@
             // Update UI
             document.getElementById('total-exercises').textContent = totalExercises;
             document.getElementById('transitions').textContent = transitions;
+            document.getElementById('transition-time').textContent = Math.round(transitions * 0.5);
         }
 
         // Save/Load functionality

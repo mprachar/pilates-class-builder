@@ -417,6 +417,14 @@ class ClassBuilder:
                 and self._level_matches(ex.level, level)
             ]
 
+            # Fallback: if no exercises match level, get ANY exercise for this section
+            if not available:
+                available = [
+                    ex for ex in self.exercises
+                    if ex.section == section["id"]
+                    and any(eq in allowed_equipment for eq in ex.equipment)
+                ]
+
             # Sort by spring setting to minimize changes (even if empty)
             available.sort(key=lambda ex: ex.spring_setting)
 
