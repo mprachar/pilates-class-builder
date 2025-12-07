@@ -331,8 +331,7 @@
 
         .exercise-item {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
             padding: 12px 15px;
             background: white;
             border-radius: 8px;
@@ -353,6 +352,12 @@
 
         .exercise-item.sortable-chosen {
             box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+
+        .exercise-row-1 {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
         }
 
         .drag-handle {
@@ -382,11 +387,22 @@
             outline: none;
         }
 
+        .remove-exercise {
+            margin-left: 10px;
+        }
+
+        .exercise-row-2 {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            padding-left: 30px;
+            flex-wrap: wrap;
+        }
+
         .exercise-meta {
             display: flex;
             gap: 10px;
             align-items: center;
-            margin-left: 15px;
         }
 
         /* Spring Graphics */
@@ -718,8 +734,15 @@
             if (!springSetting) return '';
 
             // Parse patterns like "1R + 1B", "2R", "3R or 2R+1B"
+            // "or" means alternatives - only show the first option's dots
             const springs = [];
-            const parts = springSetting.split(/\s*(?:or|\+|,)\s*/i);
+
+            // Split on "or" first to get alternatives, pick the first one
+            const alternatives = springSetting.split(/\s+or\s+/i);
+            const firstOption = alternatives[0].trim();
+
+            // Now split the first option on "+" and "," to get individual springs
+            const parts = firstOption.split(/\s*[\+,]\s*/);
 
             parts.forEach(part => {
                 const match = part.match(/(\d+)\s*([RBGY])/i);
@@ -826,18 +849,20 @@
 
                     return `
                         <div class="exercise-item" data-exercise-id="${ex.id}" data-section-id="${section.id}">
-                            <span class="drag-handle">&#9776;</span>
-                            <div class="exercise-main">
-                                <select class="exercise-select" onchange="changeExercise(this, '${section.id}', ${exIdx})">
-                                    ${optionsHtml}
-                                </select>
+                            <div class="exercise-row-1">
+                                <span class="drag-handle">&#9776;</span>
+                                <div class="exercise-main">
+                                    <select class="exercise-select" onchange="changeExercise(this, '${section.id}', ${exIdx})">
+                                        ${optionsHtml}
+                                    </select>
+                                </div>
+                                <button class="remove-exercise" onclick="removeExercise('${section.id}', ${exIdx})">x</button>
                             </div>
-                            <div class="exercise-meta">
+                            <div class="exercise-row-2">
                                 ${springDisplay ? `<div class="spring-display">${springDisplay}</div>` : ''}
                                 ${ex.reps ? `<span class="exercise-reps">${ex.reps} reps</span>` : ''}
                                 <span class="exercise-equipment">${ex.equipment}</span>
                                 <span class="exercise-duration">${Math.round(ex.duration_seconds / 60)} min</span>
-                                <button class="remove-exercise" onclick="removeExercise('${section.id}', ${exIdx})">x</button>
                             </div>
                         </div>
                     `;
