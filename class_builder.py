@@ -463,9 +463,10 @@ class ClassBuilder:
 
                     # Count transition if either equipment OR spring changed (not first exercise)
                     if not is_first_exercise and (has_equipment_transition or has_spring_transition):
-                        # Check if we've hit the max transitions - but always allow first exercise per section
-                        if class_plan["transitions"] >= max_transitions and section_has_exercise:
+                        # STRICTLY enforce max transitions - skip exercise if at limit
+                        if class_plan["transitions"] >= max_transitions:
                             # Skip this exercise - would exceed max transitions
+                            # Some sections may end up empty - validation will notify user
                             continue
                         class_plan["transitions"] += 1
 

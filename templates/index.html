@@ -173,32 +173,43 @@
 
         .equipment-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            grid-template-columns: 1fr;
+            gap: 8px;
         }
 
         .equipment-item {
             display: flex;
             align-items: center;
-            padding: 10px;
+            padding: 8px 12px;
             background: white;
             border-radius: 8px;
-            cursor: pointer;
             transition: all 0.2s;
-            border: 2px solid transparent;
+            border: 2px solid #e2e8f0;
+            gap: 10px;
         }
 
-        .equipment-item:hover {
-            background: #edf2f7;
-        }
-
-        .equipment-item.selected {
+        .equipment-item.available {
             background: #ebf4ff;
             border-color: #667eea;
         }
 
-        .equipment-item input {
-            margin-right: 10px;
+        .equipment-item.required {
+            background: #f0fff4;
+            border-color: #38a169;
+        }
+
+        .equipment-name {
+            flex: 1;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .equipment-select {
+            padding: 4px 8px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            background: white;
         }
 
         .button-row {
@@ -442,11 +453,68 @@
         }
 
         .exercise-equipment {
-            background: #edf2f7;
-            padding: 4px 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 6px 14px;
             border-radius: 20px;
             font-size: 0.85rem;
-            color: #4a5568;
+            font-weight: 600;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .validation-notice {
+            background: #fff5f5;
+            border: 2px solid #fc8181;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .validation-notice.visible {
+            display: block;
+        }
+
+        .validation-notice h4 {
+            color: #c53030;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .validation-notice ul {
+            margin: 0;
+            padding-left: 20px;
+            color: #742a2a;
+        }
+
+        .validation-notice li {
+            margin-bottom: 5px;
+        }
+
+        .validate-btn {
+            flex: 1;
+            padding: 18px 20px;
+            background: #ed8936;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: none;
+        }
+
+        .validate-btn.visible {
+            display: block;
+        }
+
+        .validate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(237, 137, 54, 0.4);
         }
 
         .exercise-duration {
@@ -661,14 +729,17 @@
                         </div>
 
                         <div class="config-section">
-                            <h3>Equipment Available</h3>
+                            <h3>Equipment Selection</h3>
                             <div class="equipment-grid">
                                 {% for eq in equipment %}
-                                <label class="equipment-item" onclick="toggleEquipment(this)">
-                                    <input type="checkbox" name="equipment" value="{{ eq.id }}"
-                                           {% if eq.id == 'reformer' %}checked{% endif %}>
-                                    {{ eq.name }}
-                                </label>
+                                <div class="equipment-item" id="eq-{{ eq.id }}">
+                                    <span class="equipment-name">{{ eq.name }}</span>
+                                    <select class="equipment-select" name="equipment-{{ eq.id }}" onchange="updateEquipmentStatus('{{ eq.id }}', this.value)">
+                                        <option value="off">Off</option>
+                                        <option value="available" {% if eq.id == 'reformer' %}selected{% endif %}>Available</option>
+                                        <option value="required">Required</option>
+                                    </select>
+                                </div>
                                 {% endfor %}
                             </div>
                         </div>
@@ -677,6 +748,9 @@
                     <div class="button-row">
                         <button class="generate-btn" onclick="generateClass()">
                             Generate Class Plan
+                        </button>
+                        <button class="validate-btn" id="validateBtn" onclick="validatePlan()">
+                            Validate Plan
                         </button>
                         <button class="save-btn" id="saveBtn" onclick="showSaveModal()">
                             Save Class
@@ -706,6 +780,10 @@
                             </div>
                         </div>
                     </div>
+                    <div class="validation-notice" id="validationNotice">
+                        <h4>Rule Violations Detected</h4>
+                        <ul id="validationList"></ul>
+                    </div>
                     <div id="equipment-flow"></div>
                     <div id="sections-container"></div>
                 </div>
@@ -734,19 +812,37 @@
         let currentClassId = null;
         let exercisesBySection = {};
 
-        function toggleEquipment(label) {
-            label.classList.toggle('selected', label.querySelector('input').checked);
+        function updateEquipmentStatus(equipmentId, status) {
+            const item = document.getElementById(`eq-${equipmentId}`);
+            item.classList.remove('available', 'required');
+            if (status !== 'off') {
+                item.classList.add(status);
+            }
+        }
+
+        function getEquipmentSelections() {
+            const available = [];
+            const required = [];
+            document.querySelectorAll('.equipment-select').forEach(select => {
+                const equipmentId = select.name.replace('equipment-', '');
+                if (select.value === 'available') {
+                    available.push(equipmentId);
+                } else if (select.value === 'required') {
+                    required.push(equipmentId);
+                    available.push(equipmentId); // Required is also available
+                }
+            });
+            return { available, required };
         }
 
         function updateMaxTransitions() {
             // Always default to 5 transitions regardless of level
-            // Level-based defaults are just recommendations, not enforced
             document.getElementById('maxTransitions').value = 5;
         }
 
-        // Initialize equipment selections
-        document.querySelectorAll('.equipment-item input:checked').forEach(input => {
-            input.closest('.equipment-item').classList.add('selected');
+        // Initialize equipment selections on page load
+        document.querySelectorAll('.equipment-select').forEach(select => {
+            updateEquipmentStatus(select.name.replace('equipment-', ''), select.value);
         });
 
         // Initialize max transitions from selected level
@@ -807,11 +903,10 @@
         // Fetch exercises by section for dropdowns
         async function fetchExercisesBySection() {
             const level = document.getElementById('level').value;
-            const equipment = Array.from(document.querySelectorAll('input[name="equipment"]:checked'))
-                .map(cb => cb.value);
+            const equipmentSelection = getEquipmentSelections();
 
             const params = new URLSearchParams();
-            equipment.forEach(eq => params.append('equipment', eq));
+            equipmentSelection.available.forEach(eq => params.append('equipment', eq));
             params.append('level', level);
 
             const response = await fetch('/exercises/by-section?' + params.toString());
@@ -822,11 +917,10 @@
             const duration = document.getElementById('duration').value;
             const level = document.getElementById('level').value;
             const maxTransitions = document.getElementById('maxTransitions').value;
-            const equipment = Array.from(document.querySelectorAll('input[name="equipment"]:checked'))
-                .map(cb => cb.value);
+            const equipmentSelection = getEquipmentSelections();
 
-            if (equipment.length === 0) {
-                alert('Please select at least one equipment type');
+            if (equipmentSelection.available.length === 0) {
+                alert('Please select at least one equipment type (Available or Required)');
                 return;
             }
 
@@ -839,15 +933,88 @@
                 body: JSON.stringify({
                     class_length: duration,
                     level: level,
-                    equipment: equipment,
+                    equipment: equipmentSelection.available,
+                    required_equipment: equipmentSelection.required,
                     max_transitions: parseInt(maxTransitions)
                 })
             });
 
             currentClassData = await response.json();
+            currentClassData.required_equipment = equipmentSelection.required;
             currentClassId = null;
             displayResults(currentClassData);
             document.getElementById('saveBtn').classList.add('visible');
+            document.getElementById('validateBtn').classList.add('visible');
+            validatePlan(); // Auto-validate after generation
+        }
+
+        function validatePlan() {
+            if (!currentClassData) return;
+
+            const violations = [];
+            const maxTransitions = parseInt(document.getElementById('maxTransitions').value);
+            const equipmentSelection = getEquipmentSelections();
+
+            // Check max transitions
+            if (currentClassData.transitions > maxTransitions) {
+                violations.push(`Transitions (${currentClassData.transitions}) exceed max (${maxTransitions})`);
+            }
+
+            // Check required equipment is used
+            const usedEquipment = new Set();
+            currentClassData.sections.forEach(section => {
+                section.exercises.forEach(ex => {
+                    if (ex.equipment) usedEquipment.add(ex.equipment);
+                });
+            });
+
+            equipmentSelection.required.forEach(eq => {
+                if (!usedEquipment.has(eq)) {
+                    violations.push(`Required equipment '${eq}' not used in plan`);
+                }
+            });
+
+            // Check for empty sections
+            currentClassData.sections.forEach(section => {
+                if (section.exercises.length === 0) {
+                    violations.push(`Section '${section.name}' has no exercises`);
+                }
+            });
+
+            // Check equipment contiguity (no returning to equipment after leaving)
+            const equipmentSequence = [];
+            const equipmentSeen = new Set();
+            let contiguityViolation = false;
+            currentClassData.sections.forEach(section => {
+                section.exercises.forEach(ex => {
+                    if (ex.equipment && !equipmentSeen.has(ex.equipment)) {
+                        equipmentSequence.push(ex.equipment);
+                        equipmentSeen.add(ex.equipment);
+                    } else if (ex.equipment && equipmentSequence.length > 0 &&
+                               equipmentSequence[equipmentSequence.length - 1] !== ex.equipment) {
+                        // Check if we're returning to previously used equipment
+                        if (equipmentSeen.has(ex.equipment)) {
+                            contiguityViolation = true;
+                        }
+                    }
+                });
+            });
+            if (contiguityViolation) {
+                violations.push('Equipment flow violation: returned to equipment after leaving it');
+            }
+
+            // Display violations
+            const noticeEl = document.getElementById('validationNotice');
+            const listEl = document.getElementById('validationList');
+
+            if (violations.length > 0) {
+                listEl.innerHTML = violations.map(v => `<li>${v}</li>`).join('');
+                noticeEl.classList.add('visible');
+            } else {
+                noticeEl.classList.remove('visible');
+            }
+
+            return violations;
         }
 
         function displayResults(data) {
@@ -975,6 +1142,7 @@
                     };
                     recalculateStats();
                     displayResults(currentClassData);
+                    validatePlan(); // Auto-validate after change
                 }
             }
         }
@@ -985,6 +1153,7 @@
                 section.exercises.splice(exerciseIdx, 1);
                 recalculateStats();
                 displayResults(currentClassData);
+                validatePlan(); // Auto-validate after removal
             }
         }
 
@@ -1010,6 +1179,7 @@
                 });
                 recalculateStats();
                 displayResults(currentClassData);
+                validatePlan(); // Auto-validate after addition
             }
         }
 
@@ -1019,6 +1189,8 @@
                 const [movedItem] = section.exercises.splice(oldIndex, 1);
                 section.exercises.splice(newIndex, 0, movedItem);
                 recalculateStats();
+                displayResults(currentClassData); // Update transition indicators
+                validatePlan(); // Auto-validate after reorder
             }
         }
 
