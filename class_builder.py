@@ -417,15 +417,13 @@ class ClassBuilder:
                 and self._level_matches(ex.level, level)
             ]
 
-            if not available:
-                continue
-
-            # Sort by spring setting to minimize changes
+            # Sort by spring setting to minimize changes (even if empty)
             available.sort(key=lambda ex: ex.spring_setting)
 
             # Select exercises to fill section time
             selected = []
             remaining_time = section_seconds
+            section_has_exercise = False  # Ensure each section gets at least one exercise
 
             # Shuffle within spring groups for variety
             random.shuffle(available)
@@ -438,9 +436,9 @@ class ClassBuilder:
                 # Skip if exercise doesn't work with valid equipment
                 if not any(eq in valid_equipment for eq in ex.equipment):
                     continue
-                if remaining_time <= 0:
+                if remaining_time <= 0 and section_has_exercise:
                     break
-                if ex.duration_seconds <= remaining_time:
+                if ex.duration_seconds <= remaining_time or not section_has_exercise:
                     # Pick equipment - prefer current to avoid transition
                     valid_eq = [e for e in ex.equipment if e in valid_equipment]
                     if not valid_eq:
@@ -457,8 +455,8 @@ class ClassBuilder:
 
                     # Count transition if either equipment OR spring changed (not first exercise)
                     if not is_first_exercise and (has_equipment_transition or has_spring_transition):
-                        # Check if we've hit the max transitions
-                        if class_plan["transitions"] >= max_transitions:
+                        # Check if we've hit the max transitions - but always allow first exercise per section
+                        if class_plan["transitions"] >= max_transitions and section_has_exercise:
                             # Skip this exercise - would exceed max transitions
                             continue
                         class_plan["transitions"] += 1
@@ -475,6 +473,7 @@ class ClassBuilder:
                         last_spring = ex.spring_setting
 
                     is_first_exercise = False
+                    section_has_exercise = True
 
                     selected.append({
                         "id": ex.id,
@@ -488,7 +487,8 @@ class ClassBuilder:
                     })
                     remaining_time -= ex.duration_seconds
 
-            if selected:
+            # Always include section in output (even if empty - shows what needs exercises)
+            if selected or True:  # Always include section
                 class_plan["sections"].append({
                     "id": section["id"],
                     "name": section["name"],
