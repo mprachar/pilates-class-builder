@@ -1,5 +1,5 @@
 """
-Pilates Class Builder - Flask Web Application
+Pie-Lates Class Builder - Flask Web Application
 
 Helps instructors build balanced Pilates classes with good flow.
 """

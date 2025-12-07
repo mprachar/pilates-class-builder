@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pilates Class Builder</title>
+    <title>Pie-Lates Class Builder</title>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         * {
@@ -710,7 +710,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Pilates Class Builder</h1>
+        <h1>Pie-Lates Class Builder</h1>
 
         <div class="main-layout">
             <!-- Sidebar - Saved Classes -->
@@ -753,7 +753,7 @@
                                 {% for lvl in levels %}
                                 <option value="{{ lvl.id }}"
                                         data-max-transitions="{{ lvl.max_transitions }}"
-                                        {% if lvl.id == 'intermediate' %}selected{% endif %}>
+                                        {% if lvl.id == 'beginner' %}selected{% endif %}>
                                     {{ lvl.name }}
                                 </option>
                                 {% endfor %}
@@ -769,9 +769,9 @@
                                 <div class="equipment-item" id="eq-{{ eq.id }}">
                                     <span class="equipment-name">{{ eq.name }}</span>
                                     <select class="equipment-select" name="equipment-{{ eq.id }}" onchange="updateEquipmentStatus('{{ eq.id }}', this.value)">
-                                        <option value="off">Off</option>
-                                        <option value="available" {% if eq.id == 'reformer' %}selected{% endif %}>Available</option>
-                                        <option value="required">Required</option>
+                                        <option value="off" {% if eq.id in ['trx', 'bosu', 'barrel'] %}selected{% endif %}>Off</option>
+                                        <option value="available" {% if eq.id in ['chair', 'springboard', 'mat'] %}selected{% endif %}>Available</option>
+                                        <option value="required" {% if eq.id == 'reformer' %}selected{% endif %}>Required</option>
                                     </select>
                                 </div>
                                 {% endfor %}
