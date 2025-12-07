@@ -453,7 +453,6 @@
         }
 
         .exercise-equipment {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 6px 14px;
             border-radius: 20px;
             font-size: 0.85rem;
@@ -461,6 +460,41 @@
             color: white;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+
+        /* Equipment-specific colors */
+        .exercise-equipment.eq-reformer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .exercise-equipment.eq-chair {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .exercise-equipment.eq-springboard {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        .exercise-equipment.eq-mat {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        .exercise-equipment.eq-trx {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        .exercise-equipment.eq-bosu {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            color: #333;
+        }
+        .exercise-equipment.eq-barrel {
+            background: linear-gradient(135deg, #d299c2 0%, #fef9d7 100%);
+            color: #333;
+        }
+
+        /* Box indicator */
+        .box-indicator {
+            background: #805ad5;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
         }
 
         .validation-notice {
@@ -981,6 +1015,12 @@
                 }
             });
 
+            // Check equipment count limits (max 3 for all levels based on sample classes)
+            const maxEquipment = 3;
+            if (usedEquipment.size > maxEquipment) {
+                violations.push(`Too many equipment types (${usedEquipment.size}) - max is ${maxEquipment}`);
+            }
+
             // Check equipment contiguity (no returning to equipment after leaving)
             const equipmentSequence = [];
             const equipmentSeen = new Set();
@@ -1054,16 +1094,22 @@
                         `<option value="${opt.id}" ${opt.id === ex.id ? 'selected' : ''}>${opt.name}</option>`
                     ).join('');
 
-                    // Detect if this is a transition (spring or equipment change)
+                    // Detect if this is a transition (spring or equipment change only)
+                    // NOTE: Box changes are NOT transitions - box is a prop on reformer
                     let transitionHtml = '';
                     if (prevExercise) {
                         const springChanged = ex.spring_setting && ex.spring_setting !== prevExercise.spring_setting;
                         const equipmentChanged = ex.equipment !== prevExercise.equipment;
+                        const boxChanged = !!ex.uses_box !== !!prevExercise.uses_box;
                         if (springChanged || equipmentChanged) {
                             const changes = [];
                             if (equipmentChanged) changes.push('Equipment');
                             if (springChanged) changes.push('Springs');
                             transitionHtml = `<div class="transition-indicator">${changes.join(' + ')} Change (~30s)</div>`;
+                        }
+                        // Show box change as info note (not a transition)
+                        if (boxChanged) {
+                            transitionHtml += `<div class="box-note" style="color:#805ad5;font-size:0.75rem;padding:2px 0;">${ex.uses_box ? '+ Add Box' : '- Remove Box'}</div>`;
                         }
                     }
                     prevExercise = ex;
@@ -1083,7 +1129,8 @@
                             <div class="exercise-row-2">
                                 ${springDisplay ? `<div class="spring-display">${springDisplay}</div>` : ''}
                                 ${ex.reps ? `<span class="exercise-reps">${ex.reps} reps</span>` : ''}
-                                <span class="exercise-equipment">${ex.equipment}</span>
+                                <span class="exercise-equipment eq-${ex.equipment}">${ex.equipment}</span>
+                                ${ex.uses_box ? '<span class="box-indicator">BOX</span>' : ''}
                                 <span class="exercise-duration">${Math.round(ex.duration_seconds / 60)} min</span>
                             </div>
                         </div>
@@ -1138,7 +1185,8 @@
                         reps: newExercise.reps,
                         duration_seconds: newExercise.duration_seconds,
                         variations: newExercise.variations || [],
-                        props: newExercise.props || []
+                        props: newExercise.props || [],
+                        uses_box: newExercise.uses_box || false
                     };
                     recalculateStats();
                     displayResults(currentClassData);
@@ -1175,7 +1223,8 @@
                     reps: newExercise.reps,
                     duration_seconds: newExercise.duration_seconds,
                     variations: newExercise.variations || [],
-                    props: newExercise.props || []
+                    props: newExercise.props || [],
+                    uses_box: newExercise.uses_box || false
                 });
                 recalculateStats();
                 displayResults(currentClassData);
@@ -1199,6 +1248,7 @@
             let totalExercises = 0;
             let transitions = 0;
             let lastSpring = null;
+            let lastBox = false;
             let equipmentFlow = [];
             let lastEquipment = null;
             let isFirst = true;
@@ -1210,6 +1260,7 @@
                     const equipmentChanged = ex.equipment && ex.equipment !== lastEquipment;
 
                     // Count transition if spring OR equipment changed (not first exercise)
+                    // NOTE: Box changes are NOT transitions - box is a prop on reformer
                     if (!isFirst && (springChanged || equipmentChanged)) {
                         transitions++;
                     }
@@ -1219,6 +1270,7 @@
                         equipmentFlow.push(ex.equipment);
                         lastEquipment = ex.equipment;
                     }
+                    lastBox = !!ex.uses_box;
                     isFirst = false;
                 });
             });

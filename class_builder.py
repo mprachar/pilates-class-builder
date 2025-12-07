@@ -47,10 +47,11 @@ EQUIPMENT_TYPES = [
 ]
 
 EXPERIENCE_LEVELS = [
-    {"id": "beginner", "name": "Beginner (Level 1)", "level_num": 1.0, "rep_multiplier": 1.2, "exercise_count_multiplier": 0.8, "max_transitions": 5},
-    {"id": "intermediate", "name": "Intermediate (Level 1.5)", "level_num": 1.5, "rep_multiplier": 1.0, "exercise_count_multiplier": 1.0, "max_transitions": 8},
-    {"id": "advanced", "name": "Advanced (Level 2)", "level_num": 2.0, "rep_multiplier": 0.85, "exercise_count_multiplier": 1.15, "max_transitions": 12},
-    {"id": "advanced_plus", "name": "Advanced+ (Level 2.5)", "level_num": 2.5, "rep_multiplier": 0.75, "exercise_count_multiplier": 1.25, "max_transitions": 16},
+    # max_transitions based on sample classes (~6 for all levels)
+    {"id": "beginner", "name": "Beginner (Level 1)", "level_num": 1.0, "rep_multiplier": 1.2, "exercise_count_multiplier": 0.8, "max_transitions": 6},
+    {"id": "intermediate", "name": "Intermediate (Level 1.5)", "level_num": 1.5, "rep_multiplier": 1.0, "exercise_count_multiplier": 1.0, "max_transitions": 6},
+    {"id": "advanced", "name": "Advanced (Level 2)", "level_num": 2.0, "rep_multiplier": 0.85, "exercise_count_multiplier": 1.15, "max_transitions": 6},
+    {"id": "advanced_plus", "name": "Advanced+ (Level 2.5)", "level_num": 2.5, "rep_multiplier": 0.75, "exercise_count_multiplier": 1.25, "max_transitions": 8},
 ]
 
 
@@ -68,6 +69,7 @@ class Exercise:
     variations: list[str] = field(default_factory=list)
     props: list[str] = field(default_factory=list)
     notes: str = ""
+    uses_box: bool = False  # True if exercise uses the long or short box
 
 
 # Seed exercise database with spring settings and rep counts from CPTT manuals
@@ -128,6 +130,14 @@ EXERCISES = [
              spring_setting="1R", reps=3, duration_seconds=60),
     Exercise("ab_criss_cross", "Criss Cross", "abdominals", ["mat"], "intermediate",
              spring_setting="", reps=8, duration_seconds=60),
+    Exercise("ab_short_box_round", "Short Box - Round Back", "abdominals", ["reformer"], "intermediate",
+             spring_setting="1R", reps=5, duration_seconds=60, uses_box=True),
+    Exercise("ab_short_box_flat", "Short Box - Flat Back", "abdominals", ["reformer"], "intermediate",
+             spring_setting="1R", reps=5, duration_seconds=60, uses_box=True),
+    Exercise("ab_short_box_twist", "Short Box - Twist", "abdominals", ["reformer"], "intermediate",
+             spring_setting="1R", reps=5, duration_seconds=60, uses_box=True),
+    Exercise("ab_short_box_side", "Short Box - Side to Side", "abdominals", ["reformer"], "intermediate",
+             spring_setting="1R", reps=5, duration_seconds=60, uses_box=True),
 
     # Plank (various springs) - Manual: 3-5 reps
     Exercise("pl_front_plank", "Front Plank", "plank", ["mat"], "beginner",
@@ -150,7 +160,7 @@ EXERCISES = [
     Exercise("ub_chest_expansion", "Chest Expansion", "upper_body", ["reformer", "springboard"], "beginner",
              spring_setting="1R", reps=5, duration_seconds=45),
     Exercise("ub_rowing", "Rowing Series", "upper_body", ["reformer"], "intermediate",
-             spring_setting="1R", reps=5, duration_seconds=90),
+             spring_setting="1R", reps=5, duration_seconds=90, uses_box=True),
     Exercise("ub_hug_a_tree", "Hug a Tree", "upper_body", ["reformer", "springboard"], "beginner",
              spring_setting="1R", reps=8, duration_seconds=45),
     Exercise("ub_push_ups", "Push Ups", "upper_body", ["mat", "chair"], "intermediate",
@@ -188,7 +198,7 @@ EXERCISES = [
     Exercise("pe_swimming", "Swimming", "prone_extension", ["mat"], "beginner",  # CPTT: B mat
              spring_setting="", reps=5, duration_seconds=45),  # 5 sets
     Exercise("pe_pulling_straps", "Pulling Straps", "prone_extension", ["reformer"], "beginner",  # CPTT: B/I
-             spring_setting="1R", reps=5, duration_seconds=60),
+             spring_setting="1R", reps=5, duration_seconds=60, uses_box=True),
     Exercise("pe_back_extension", "Back Extension", "prone_extension", ["chair", "barrel"], "intermediate",
              spring_setting="1@2", reps=5, duration_seconds=60),
     Exercise("pe_rocking", "Rocking", "prone_extension", ["mat"], "intermediate",  # CPTT: I/A
@@ -256,6 +266,7 @@ class ClassBuilder:
                 "duration_seconds": ex.duration_seconds,
                 "variations": ex.variations,
                 "props": ex.props,
+                "uses_box": ex.uses_box,
             })
 
         return results
@@ -343,15 +354,55 @@ class ClassBuilder:
 
         return True, equipment_sequence
 
+    def _validate_class(self, class_plan: dict, max_equipment: int = 3, allowed_equipment: list[str] = None, level: str = "intermediate") -> tuple[bool, list[str]]:
+        """
+        Validate a generated class plan for rule violations.
+        Returns (is_valid, list of violation messages).
+        Only counts empty sections as violations if exercises were available for that section.
+        """
+        violations = []
+
+        # Check for empty sections - but only if exercises were available
+        for section in class_plan["sections"]:
+            if not section["exercises"]:
+                # Check if any exercises exist for this section with selected equipment+level
+                available = [
+                    ex for ex in self.exercises
+                    if ex.section == section["id"]
+                    and any(eq in (allowed_equipment or ["reformer"]) for eq in ex.equipment)
+                    and self._level_matches(ex.level, level)
+                ]
+                # Only count as violation if exercises were available but not selected
+                if available:
+                    violations.append(f"Empty section: {section['name']}")
+
+        # Check transition count
+        if class_plan["transitions"] > class_plan["max_transitions"]:
+            violations.append(f"Too many transitions ({class_plan['transitions']}) - max is {class_plan['max_transitions']}")
+
+        # Check equipment count
+        used_equipment = set()
+        for section in class_plan["sections"]:
+            for ex in section["exercises"]:
+                if ex.get("equipment"):
+                    used_equipment.add(ex["equipment"])
+
+        if len(used_equipment) > max_equipment:
+            violations.append(f"Too many equipment types ({len(used_equipment)}) - max is {max_equipment}")
+
+        return len(violations) == 0, violations
+
     def generate_class(
         self,
         duration_minutes: int = 50,
         level: str = "intermediate",
         allowed_equipment: list[str] = None,
-        max_transitions: int = None
+        max_transitions: int = None,
+        max_retries: int = 10
     ) -> dict:
         """
         Generate a balanced class plan with optimized flow.
+        Retries generation until a valid plan is produced.
 
         Rules applied:
         - Footwork always first, Stretch always last
@@ -364,10 +415,47 @@ class ClassBuilder:
 
         level_config = self._get_level_config(level)
 
-        # Use provided max_transitions or default from level config (default 5)
+        # Use provided max_transitions or default from level config (default 6 based on sample classes)
         if max_transitions is None:
-            max_transitions = level_config.get("max_transitions", 5)
+            max_transitions = level_config.get("max_transitions", 6)
 
+        # Equipment limit: sample classes show 2-3 equipment for all levels
+        max_equipment = 3
+
+        # Retry generation until we get a valid plan
+        best_plan = None
+        best_violation_count = float('inf')
+
+        for attempt in range(max_retries):
+            class_plan = self._generate_class_attempt(
+                duration_minutes, level, level_config, allowed_equipment, max_transitions, max_equipment
+            )
+
+            # Validate the generated plan
+            is_valid, violations = self._validate_class(class_plan, max_equipment, allowed_equipment, level)
+
+            if is_valid:
+                return class_plan
+
+            # Track best plan (fewest violations) as fallback
+            if len(violations) < best_violation_count:
+                best_violation_count = len(violations)
+                best_plan = class_plan
+
+        # If no valid plan after all retries, return best attempt
+        # (This shouldn't happen often with good exercise coverage)
+        return best_plan if best_plan else class_plan
+
+    def _generate_class_attempt(
+        self,
+        duration_minutes: int,
+        level: str,
+        level_config: dict,
+        allowed_equipment: list[str],
+        max_transitions: int,
+        max_equipment: int
+    ) -> dict:
+        """Single attempt to generate a class plan."""
         # Group exercises by section for analysis
         exercises_by_section = {}
         for ex in self.exercises:
@@ -400,6 +488,7 @@ class ClassBuilder:
         current_equipment = None
         equipment_used = set()
         last_spring = None
+        last_box = False  # Track if previous exercise used box
         is_first_exercise = True  # Track first exercise to not count initial setup as transition
 
         for idx, section in enumerate(ordered_sections):
@@ -425,76 +514,104 @@ class ClassBuilder:
                     and any(eq in allowed_equipment for eq in ex.equipment)
                 ]
 
-            # Sort by spring setting to minimize changes (even if empty)
-            available.sort(key=lambda ex: ex.spring_setting)
-
             # Select exercises to fill section time
             selected = []
             remaining_time = section_seconds
             section_has_exercise = False  # Ensure each section gets at least one exercise
 
-            # Shuffle within spring groups for variety
+            # Shuffle for initial variety
             random.shuffle(available)
 
-            for ex in available:
-                # Recalculate valid equipment for EACH exercise
-                # This ensures we don't return to equipment after leaving it
-                valid_equipment = set(allowed_equipment) - (equipment_used - ({current_equipment} if current_equipment else set()))
+            while available and (remaining_time > 0 or not section_has_exercise):
+                # Sort available exercises to prefer current spring setting to minimize transitions
+                # Priority: 1) same spring, 2) different spring
+                def transition_cost(ex):
+                    spring_match = (ex.spring_setting == last_spring) if last_spring else True
+                    return 0 if spring_match else 1
 
-                # Skip if exercise doesn't work with valid equipment
-                if not any(eq in valid_equipment for eq in ex.equipment):
-                    continue
-                if remaining_time <= 0 and section_has_exercise:
-                    break
-                if ex.duration_seconds <= remaining_time or not section_has_exercise:
-                    # Pick equipment - prefer current to avoid transition
-                    valid_eq = [e for e in ex.equipment if e in valid_equipment]
-                    if not valid_eq:
+                available.sort(key=transition_cost)
+
+                # Try to find a valid exercise
+                found_exercise = False
+                selected_idx = None
+
+                for i, ex in enumerate(available):
+                    # Recalculate valid equipment for EACH exercise
+                    valid_equipment = set(allowed_equipment) - (equipment_used - ({current_equipment} if current_equipment else set()))
+
+                    # Skip if exercise doesn't work with valid equipment
+                    if not any(eq in valid_equipment for eq in ex.equipment):
                         continue
 
-                    if current_equipment in valid_eq:
-                        equipment_choice = current_equipment
-                    else:
-                        equipment_choice = valid_eq[0]
+                    # Enforce equipment count limit
+                    current_eq_count = len(equipment_used) + (1 if current_equipment and current_equipment not in equipment_used else 0)
+                    exercise_would_add_new = not any(eq in equipment_used or eq == current_equipment for eq in ex.equipment)
+                    if exercise_would_add_new and current_eq_count >= max_equipment:
+                        continue
 
-                    # Track transitions (equipment change OR spring change)
-                    has_equipment_transition = equipment_choice != current_equipment
-                    has_spring_transition = ex.spring_setting and ex.spring_setting != last_spring
+                    if remaining_time <= 0 and section_has_exercise:
+                        break
 
-                    # Count transition if either equipment OR spring changed (not first exercise)
-                    if not is_first_exercise and (has_equipment_transition or has_spring_transition):
-                        # STRICTLY enforce max transitions - skip exercise if at limit
-                        if class_plan["transitions"] >= max_transitions:
-                            # Skip this exercise - would exceed max transitions
-                            # Some sections may end up empty - validation will notify user
+                    if ex.duration_seconds <= remaining_time or not section_has_exercise:
+                        # Pick equipment - prefer current to avoid transition
+                        valid_eq = [e for e in ex.equipment if e in valid_equipment]
+                        if not valid_eq:
                             continue
-                        class_plan["transitions"] += 1
 
-                    # Track equipment flow
-                    if has_equipment_transition:
-                        if current_equipment is not None:
-                            equipment_used.add(current_equipment)
-                        current_equipment = equipment_choice
-                        class_plan["equipment_flow"].append(equipment_choice)
+                        if current_equipment in valid_eq:
+                            equipment_choice = current_equipment
+                        else:
+                            equipment_choice = valid_eq[0]
 
-                    # Update spring tracking
-                    if ex.spring_setting:
-                        last_spring = ex.spring_setting
+                        # Track transitions (equipment change OR spring change)
+                        # NOTE: Box changes are NOT transitions - box is a prop on reformer, not separate equipment
+                        has_equipment_transition = equipment_choice != current_equipment
+                        has_spring_transition = ex.spring_setting and ex.spring_setting != last_spring
 
-                    is_first_exercise = False
-                    section_has_exercise = True
+                        # Count transition if equipment OR spring changed (not first exercise)
+                        if not is_first_exercise and (has_equipment_transition or has_spring_transition):
+                            # STRICTLY enforce max transitions - skip exercise if at limit
+                            if class_plan["transitions"] >= max_transitions:
+                                continue
+                            class_plan["transitions"] += 1
 
-                    selected.append({
-                        "id": ex.id,
-                        "name": ex.name,
-                        "equipment": equipment_choice,
-                        "spring_setting": ex.spring_setting,
-                        "reps": ex.reps,
-                        "duration_seconds": ex.duration_seconds,
-                        "variations": ex.variations[:2] if ex.variations else [],
-                        "props": ex.props,
-                    })
-                    remaining_time -= ex.duration_seconds
+                        # Track equipment flow
+                        if has_equipment_transition:
+                            if current_equipment is not None:
+                                equipment_used.add(current_equipment)
+                            current_equipment = equipment_choice
+                            class_plan["equipment_flow"].append(equipment_choice)
+
+                        # Update spring and box tracking
+                        if ex.spring_setting:
+                            last_spring = ex.spring_setting
+                        last_box = ex.uses_box
+
+                        is_first_exercise = False
+                        section_has_exercise = True
+
+                        selected.append({
+                            "id": ex.id,
+                            "name": ex.name,
+                            "equipment": equipment_choice,
+                            "spring_setting": ex.spring_setting,
+                            "reps": ex.reps,
+                            "duration_seconds": ex.duration_seconds,
+                            "variations": ex.variations[:2] if ex.variations else [],
+                            "props": ex.props,
+                            "uses_box": ex.uses_box,
+                        })
+                        remaining_time -= ex.duration_seconds
+                        selected_idx = i
+                        found_exercise = True
+                        break
+
+                # Remove selected exercise from available list
+                if selected_idx is not None:
+                    available.pop(selected_idx)
+                else:
+                    # No valid exercise found, exit loop
+                    break
 
             # Always include section in output (even if empty - shows what needs exercises)
             if selected or True:  # Always include section
