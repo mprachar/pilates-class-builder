@@ -537,14 +537,16 @@ class ClassBuilder:
             section_has_exercise = False  # Ensure each section gets at least one exercise
 
             while available and (remaining_time > 0 or not section_has_exercise):
-                # Sort available exercises to prefer current spring setting to minimize transitions
-                # Add random tiebreaker so exercises with same transition cost are randomly ordered
-                def transition_cost(ex):
-                    spring_match = (ex.spring_setting == last_spring) if last_spring else True
-                    cost = 0 if spring_match else 1
-                    return (cost, random.random())  # Random tiebreaker for variety
-
-                available.sort(key=transition_cost)
+                # Prioritize reformer-capable exercises, then shuffle within priority
+                # This ensures reformer-based classes
+                def exercise_priority(ex):
+                    if "reformer" in ex.equipment:
+                        return (0, random.random())  # Highest priority with random tiebreaker
+                    elif ex.equipment != ["mat"]:
+                        return (1, random.random())  # Other spring equipment
+                    else:
+                        return (2, random.random())  # Mat-only exercises last
+                available.sort(key=exercise_priority)
 
                 # Try to find a valid exercise
                 found_exercise = False
@@ -552,7 +554,9 @@ class ClassBuilder:
 
                 for i, ex in enumerate(available):
                     # Recalculate valid equipment for EACH exercise
-                    valid_equipment = set(allowed_equipment) - (equipment_used - ({current_equipment} if current_equipment else set()))
+                    # Allow return to already-used equipment (especially reformer for reformer-based classes)
+                    # Equipment count is enforced separately below
+                    valid_equipment = set(allowed_equipment)
 
                     # Skip if exercise doesn't work with valid equipment
                     if not any(eq in valid_equipment for eq in ex.equipment):
@@ -568,15 +572,25 @@ class ClassBuilder:
                         break
 
                     if ex.duration_seconds <= remaining_time or not section_has_exercise:
-                        # Pick equipment - prefer current to avoid transition
+                        # Pick equipment with weighted randomness - heavily favor reformer
                         valid_eq = [e for e in ex.equipment if e in valid_equipment]
                         if not valid_eq:
                             continue
 
-                        if current_equipment in valid_eq:
+                        # Priority order: reformer > other spring equipment > mat
+                        # Reformer should dominate (70%), other equipment for variety (30%)
+                        if "reformer" in valid_eq and random.random() < 0.70:
+                            equipment_choice = "reformer"
+                        elif current_equipment in valid_eq and current_equipment != "mat" and random.random() < 0.60:
+                            # Stay on current non-mat equipment 60% of time
                             equipment_choice = current_equipment
                         else:
-                            equipment_choice = valid_eq[0]
+                            # Pick from available, but still prefer non-mat
+                            non_mat = [e for e in valid_eq if e != "mat"]
+                            if non_mat and random.random() < 0.85:
+                                equipment_choice = random.choice(non_mat)
+                            else:
+                                equipment_choice = random.choice(valid_eq)
 
                         # Track transitions (equipment change OR spring change)
                         # NOTE: Box changes are NOT transitions - box is a prop on reformer, not separate equipment
@@ -587,7 +601,6 @@ class ClassBuilder:
 
                         # Count transition if equipment OR spring changed (not first exercise)
                         if not is_first_exercise and (has_equipment_transition or has_spring_transition):
-                            # STRICTLY enforce max transitions - skip exercise if at limit
                             if class_plan["transitions"] >= max_transitions:
                                 continue
                             class_plan["transitions"] += 1
