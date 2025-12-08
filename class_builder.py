@@ -536,15 +536,13 @@ class ClassBuilder:
             remaining_time = section_seconds
             section_has_exercise = False  # Ensure each section gets at least one exercise
 
-            # Shuffle for initial variety
-            random.shuffle(available)
-
             while available and (remaining_time > 0 or not section_has_exercise):
                 # Sort available exercises to prefer current spring setting to minimize transitions
-                # Priority: 1) same spring, 2) different spring
+                # Add random tiebreaker so exercises with same transition cost are randomly ordered
                 def transition_cost(ex):
                     spring_match = (ex.spring_setting == last_spring) if last_spring else True
-                    return 0 if spring_match else 1
+                    cost = 0 if spring_match else 1
+                    return (cost, random.random())  # Random tiebreaker for variety
 
                 available.sort(key=transition_cost)
 
