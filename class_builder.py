@@ -377,7 +377,7 @@ class ClassBuilder:
         pattern_roll = random.random()
         n_sections = len(ordered_sections)
 
-        if secondary_equipment and pattern_roll > 0.25:  # 75% chance to use secondary
+        if secondary_equipment and pattern_roll > 0.10:  # 90% chance to use secondary
             # Find which sections can use secondary equipment
             secondary_eligible = []
             for i, section in enumerate(ordered_sections):
@@ -393,19 +393,28 @@ class ClassBuilder:
                 secondary_eligible.sort()
 
                 # Decide how many sections use secondary equipment
-                if pattern_roll > 0.75:  # 25% chance for more secondary
-                    num_secondary = random.randint(2, min(4, len(secondary_eligible)))
-                else:  # 50% chance for standard amount
-                    num_secondary = random.randint(1, min(2, len(secondary_eligible)))
+                # MORE AGGRESSIVE allocation since chair has fewer exercises than reformer
+                if pattern_roll > 0.55:  # 45% chance for high variety (4-6 sections)
+                    num_secondary = random.randint(4, min(6, len(secondary_eligible)))
+                else:  # 45% chance for medium variety (3-5 sections)
+                    num_secondary = random.randint(3, min(5, len(secondary_eligible)))
 
                 # Choose starting position for secondary block
-                # Must leave at least 40% of sections for primary
-                min_start = max(1, int(n_sections * 0.4))
+                # Lower threshold (30%) to allow more secondary equipment usage
+                min_start = max(1, int(n_sections * 0.3))
                 eligible_starts = [i for i in secondary_eligible if i >= min_start]
 
                 if eligible_starts:
-                    # Pick a random start position from eligible ones
-                    start_idx = random.choice(eligible_starts)
+                    # Prefer EARLIER start positions to maximize secondary equipment usage
+                    # Weight toward the first half of eligible starts
+                    if len(eligible_starts) > 2:
+                        # 70% chance to pick from first half, 30% from second half
+                        if random.random() < 0.7:
+                            start_idx = random.choice(eligible_starts[:len(eligible_starts)//2 + 1])
+                        else:
+                            start_idx = random.choice(eligible_starts)
+                    else:
+                        start_idx = eligible_starts[0]  # Always pick earliest if only 1-2 options
 
                     # Find consecutive eligible sections from start
                     consecutive = [start_idx]
