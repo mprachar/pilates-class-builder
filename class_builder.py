@@ -421,26 +421,28 @@ class ClassBuilder:
                         if section_idx < len(allocations):
                             allocations[section_idx] = secondary_equipment
 
-                    # Everything AFTER secondary block: NO RETURN TO PRIMARY
-                    # This is the CRITICAL fix for linear flow enforcement
-                    # Priority: mat > secondary > stay on secondary (NEVER primary)
+                    # Everything AFTER secondary block: prefer continuing secondary or mat
                     last_secondary = consecutive[min(num_secondary, len(consecutive)) - 1]
                     for i in range(last_secondary + 1, len(allocations)):
                         section_id = ordered_sections[i]["id"]
                         eq_counts = section_exercise_counts.get(section_id, {})
 
                         # Priority order for post-secondary sections:
-                        # 1. Mat (if available) - natural ending
+                        # 1. Mat (if available and in allowed list) - natural ending
                         # 2. Secondary equipment (if available) - continue the block
-                        # 3. Keep secondary even if no exercises (will get skipped anyway)
-                        if eq_counts.get("mat", 0) > 0:
+                        # 3. Keep WHATEVER EQUIPMENT HAS EXERCISES (prevents empty sections)
+                        if "mat" in allowed_equipment and eq_counts.get("mat", 0) > 0:
                             allocations[i] = "mat"
                         elif eq_counts.get(secondary_equipment, 0) > 0:
                             allocations[i] = secondary_equipment
-                        else:
-                            # CRITICAL: Even if no exercises available, do NOT return to primary
-                            # Use secondary - section will be empty but flow is preserved
-                            allocations[i] = secondary_equipment
+                        elif eq_counts.get(primary_equipment, 0) > 0:
+                            # Primary is ONLY option - keep it to avoid empty section
+                            # This may cause "bouncing" at the end but that's better than empty
+                            allocations[i] = primary_equipment
+                        elif eq_counts:
+                            # Use whatever equipment has exercises
+                            allocations[i] = max(eq_counts, key=eq_counts.get)
+                        # else: keep current allocation (will be empty, validation catches it)
 
         # FINAL PASS: Enforce linear flow (no equipment returns)
         # This catches edge cases where initial allocation created bouncing
@@ -456,19 +458,16 @@ class ClassBuilder:
         allowed_equipment: list[str]
     ) -> list[str]:
         """
-        Post-process allocations to enforce linear flow.
+        Post-process allocations to enforce linear flow WHERE POSSIBLE.
         Once we leave an equipment type, we can never return to it.
+
+        CRITICAL: Do NOT create empty sections! If enforcing linear flow
+        would result in a section with no exercises, allow the "bounce"
+        instead. An imperfect flow is better than missing sections.
         """
         if len(allocations) <= 1:
             return allocations
 
-        # Track equipment sequence (in order of first appearance)
-        equipment_order = []
-        for eq in allocations:
-            if eq not in equipment_order:
-                equipment_order.append(eq)
-
-        # Check for violations (equipment appears after it was abandoned)
         result = allocations.copy()
         abandoned = set()
         current_eq = None
@@ -480,19 +479,20 @@ class ClassBuilder:
 
             if eq in abandoned:
                 # VIOLATION: Trying to return to abandoned equipment
-                # Find best alternative: current equipment or next in allowed list
                 section_id = ordered_sections[i]["id"]
                 eq_counts = section_exercise_counts.get(section_id, {})
 
-                # Priority: current_eq > mat > any non-abandoned equipment
+                # Try to fix, but ONLY if it won't create empty section
+                # Priority: current_eq > mat > keep original (allow bounce)
                 if current_eq and eq_counts.get(current_eq, 0) > 0:
                     result[i] = current_eq
                 elif "mat" in allowed_equipment and eq_counts.get("mat", 0) > 0:
                     result[i] = "mat"
-                elif current_eq:
-                    # Keep current equipment even if no exercises (section will be empty)
-                    result[i] = current_eq
-                # else: keep the violating allocation, validation will catch it
+                else:
+                    # Cannot fix without creating empty section
+                    # ALLOW THE BOUNCE - it's better than empty sections
+                    # Clear abandoned set since we're accepting this equipment return
+                    abandoned.discard(eq)
 
             current_eq = result[i]
 
@@ -511,47 +511,54 @@ class ClassBuilder:
     def _optimize_section_order(
         self,
         allowed_equipment: list[str],
-        exercises_by_section: dict
+        exercises_by_section: dict,
+        level: str = "intermediate"
     ) -> list[dict]:
         """
-        Optimize middle section order to minimize equipment transitions.
+        Optimize middle section order for LINEAR EQUIPMENT FLOW.
 
-        Rule: Cannot return to equipment after leaving it.
-        Goal: Group sections by equipment for smooth flow.
+        Strategy: Order sections so that secondary-equipment-capable sections
+        are grouped at the END, enabling: primary → secondary → mat flow.
+
+        This prevents the scenario where:
+        - Middle sections use secondary equipment
+        - Later sections can ONLY use primary (no secondary exercises)
+        - Linear flow is violated (can't return to primary)
+
+        CRITICAL: Must filter by level to accurately determine capability!
         """
-        # Determine which equipment each section primarily uses
-        section_equipment = {}
+        primary_equipment = allowed_equipment[0] if allowed_equipment else "mat"
+        secondary_equipment = allowed_equipment[1] if len(allowed_equipment) > 1 else None
+
+        # Categorize sections by equipment capability (FILTERED BY LEVEL)
+        primary_only = []      # Can ONLY use primary equipment at this level
+        secondary_capable = [] # Can use secondary equipment at this level
+
         for section in FLEXIBLE_SECTIONS:
             section_id = section["id"]
             if section_id not in exercises_by_section:
+                primary_only.append(section)
                 continue
 
-            # Count equipment usage in this section
+            # Count equipment availability FOR THIS LEVEL
             eq_count = {}
             for ex in exercises_by_section[section_id]:
+                # CRITICAL: Filter by level!
+                if not self._level_matches(ex.level, level):
+                    continue
                 for eq in ex.equipment:
                     if eq in allowed_equipment:
                         eq_count[eq] = eq_count.get(eq, 0) + 1
 
-            if eq_count:
-                # Primary equipment is most common
-                section_equipment[section_id] = max(eq_count, key=eq_count.get)
+            # Check if section can use secondary equipment AT THIS LEVEL
+            if secondary_equipment and eq_count.get(secondary_equipment, 0) > 0:
+                secondary_capable.append(section)
+            else:
+                primary_only.append(section)
 
-        # Group sections by primary equipment
-        equipment_groups = {}
-        for section_id, eq in section_equipment.items():
-            if eq not in equipment_groups:
-                equipment_groups[eq] = []
-            equipment_groups[eq].append(section_id)
-
-        # Order equipment groups (start with most sections)
-        ordered_sections = []
-        for eq in sorted(equipment_groups.keys(), key=lambda e: -len(equipment_groups[e])):
-            for section_id in equipment_groups[eq]:
-                for section in FLEXIBLE_SECTIONS:
-                    if section["id"] == section_id:
-                        ordered_sections.append(section)
-                        break
+        # Order: primary-only sections FIRST, then secondary-capable sections
+        # This enables: primary (primary-only) → secondary (secondary-capable) → mat
+        ordered_sections = primary_only + secondary_capable
 
         # Add any sections not yet included
         for section in FLEXIBLE_SECTIONS:
@@ -690,8 +697,8 @@ class ClassBuilder:
                 exercises_by_section[ex.section] = []
             exercises_by_section[ex.section].append(ex)
 
-        # Optimize middle section order
-        optimized_middle = self._optimize_section_order(allowed_equipment, exercises_by_section)
+        # Optimize middle section order (pass level for proper filtering)
+        optimized_middle = self._optimize_section_order(allowed_equipment, exercises_by_section, level)
 
         # Build final section order
         ordered_sections = [FIXED_FIRST] + optimized_middle + [FIXED_LAST]
