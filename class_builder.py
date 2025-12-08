@@ -15,7 +15,6 @@ FLOW RULES:
 import random
 from dataclasses import dataclass, field
 from typing import Optional
-from itertools import permutations
 
 # Class sections - Footwork first, Stretch last, middle 8 flexible
 FIXED_FIRST = {"id": "footwork", "name": "Footwork", "order": 1, "typical_minutes": 5}
@@ -305,6 +304,210 @@ class ClassBuilder:
                 return lvl
         return EXPERIENCE_LEVELS[1]  # Default to intermediate
 
+    def _allocate_equipment_blocks(
+        self,
+        ordered_sections: list[dict],
+        allowed_equipment: list[str],
+        level: str,
+        max_transitions: int
+    ) -> list[str]:
+        """
+        Pre-allocate equipment to each section to maximize primary equipment usage
+        while maintaining LINEAR FLOW and providing controlled variety.
+
+        Returns: List of equipment allocations, one per section.
+
+        Strategy:
+        1. Reserve "stretch" section for mat (natural ending)
+        2. Allocate 1-2 sections to secondary equipment for variety
+        3. Use primary equipment for everything else
+        4. Ensure linear flow (no interleaving like R-M-R-M)
+        """
+        primary_equipment = allowed_equipment[0] if allowed_equipment else "mat"
+        secondary_equipment = allowed_equipment[1] if len(allowed_equipment) > 1 else None
+        tertiary_equipment = allowed_equipment[2] if len(allowed_equipment) > 2 else None
+
+        # Count available exercises per section per equipment
+        section_exercise_counts = {}
+        for section in ordered_sections:
+            section_id = section["id"]
+            eq_counts = {}
+            for ex in self.exercises:
+                if ex.section != section_id:
+                    continue
+                if not self._level_matches(ex.level, level):
+                    continue
+                for eq in ex.equipment:
+                    if eq in allowed_equipment:
+                        eq_counts[eq] = eq_counts.get(eq, 0) + 1
+            section_exercise_counts[section_id] = eq_counts
+
+        # Initial allocation: mostly primary equipment
+        allocations = []
+        for section in ordered_sections:
+            section_id = section["id"]
+            eq_counts = section_exercise_counts.get(section_id, {})
+
+            # Stretch section: prefer mat
+            if section_id == "stretch" and eq_counts.get("mat", 0) > 0:
+                allocations.append("mat")
+            # Otherwise: prefer primary equipment
+            elif eq_counts.get(primary_equipment, 0) > 0:
+                allocations.append(primary_equipment)
+            elif secondary_equipment and eq_counts.get(secondary_equipment, 0) > 0:
+                allocations.append(secondary_equipment)
+            elif eq_counts.get("mat", 0) > 0:
+                allocations.append("mat")
+            elif eq_counts:
+                allocations.append(max(eq_counts, key=eq_counts.get))
+            else:
+                allocations.append(primary_equipment)
+
+        # Introduce controlled variety: allocate CONTIGUOUS sections to secondary equipment
+        # CRITICAL: Equipment must form LINEAR FLOW with no returns
+        # Valid: reformer -> chair -> mat, reformer -> mat, reformer -> chair -> springboard -> mat
+        # Invalid: reformer -> chair -> reformer (returns to reformer after leaving)
+
+        # VARIETY STRATEGY: Randomly decide pattern and apply it linearly
+        # Pattern options (with probabilities):
+        # - 25%: Primary only -> mat (simple reformer class)
+        # - 50%: Primary -> Secondary -> mat (standard variety)
+        # - 25%: Primary -> Secondary (more sections) -> mat
+
+        pattern_roll = random.random()
+        n_sections = len(ordered_sections)
+
+        if secondary_equipment and pattern_roll > 0.25:  # 75% chance to use secondary
+            # Find which sections can use secondary equipment
+            secondary_eligible = []
+            for i, section in enumerate(ordered_sections):
+                section_id = section["id"]
+                if i == 0 or section_id == "stretch":
+                    continue  # Keep first as primary, stretch as mat
+                eq_counts = section_exercise_counts.get(section_id, {})
+                if eq_counts.get(secondary_equipment, 0) >= 1:
+                    secondary_eligible.append(i)
+
+            if secondary_eligible:
+                # CRITICAL: Sort eligible indices to ensure consecutive detection works
+                secondary_eligible.sort()
+
+                # Decide how many sections use secondary equipment
+                if pattern_roll > 0.75:  # 25% chance for more secondary
+                    num_secondary = random.randint(2, min(4, len(secondary_eligible)))
+                else:  # 50% chance for standard amount
+                    num_secondary = random.randint(1, min(2, len(secondary_eligible)))
+
+                # Choose starting position for secondary block
+                # Must leave at least 40% of sections for primary
+                min_start = max(1, int(n_sections * 0.4))
+                eligible_starts = [i for i in secondary_eligible if i >= min_start]
+
+                if eligible_starts:
+                    # Pick a random start position from eligible ones
+                    start_idx = random.choice(eligible_starts)
+
+                    # Find consecutive eligible sections from start
+                    consecutive = [start_idx]
+                    for next_idx in secondary_eligible:
+                        if next_idx > start_idx and next_idx == consecutive[-1] + 1:
+                            consecutive.append(next_idx)
+                        elif next_idx > consecutive[-1] + 1:
+                            break  # Gap found, stop
+
+                    # Allocate secondary to consecutive sections (up to num_secondary)
+                    for i in range(min(num_secondary, len(consecutive))):
+                        section_idx = consecutive[i]
+                        if section_idx < len(allocations):
+                            allocations[section_idx] = secondary_equipment
+
+                    # Everything AFTER secondary block: NO RETURN TO PRIMARY
+                    # This is the CRITICAL fix for linear flow enforcement
+                    # Priority: mat > secondary > stay on secondary (NEVER primary)
+                    last_secondary = consecutive[min(num_secondary, len(consecutive)) - 1]
+                    for i in range(last_secondary + 1, len(allocations)):
+                        section_id = ordered_sections[i]["id"]
+                        eq_counts = section_exercise_counts.get(section_id, {})
+
+                        # Priority order for post-secondary sections:
+                        # 1. Mat (if available) - natural ending
+                        # 2. Secondary equipment (if available) - continue the block
+                        # 3. Keep secondary even if no exercises (will get skipped anyway)
+                        if eq_counts.get("mat", 0) > 0:
+                            allocations[i] = "mat"
+                        elif eq_counts.get(secondary_equipment, 0) > 0:
+                            allocations[i] = secondary_equipment
+                        else:
+                            # CRITICAL: Even if no exercises available, do NOT return to primary
+                            # Use secondary - section will be empty but flow is preserved
+                            allocations[i] = secondary_equipment
+
+        # FINAL PASS: Enforce linear flow (no equipment returns)
+        # This catches edge cases where initial allocation created bouncing
+        allocations = self._enforce_linear_flow(allocations, section_exercise_counts, ordered_sections, allowed_equipment)
+
+        return allocations
+
+    def _enforce_linear_flow(
+        self,
+        allocations: list[str],
+        section_exercise_counts: dict,
+        ordered_sections: list[dict],
+        allowed_equipment: list[str]
+    ) -> list[str]:
+        """
+        Post-process allocations to enforce linear flow.
+        Once we leave an equipment type, we can never return to it.
+        """
+        if len(allocations) <= 1:
+            return allocations
+
+        # Track equipment sequence (in order of first appearance)
+        equipment_order = []
+        for eq in allocations:
+            if eq not in equipment_order:
+                equipment_order.append(eq)
+
+        # Check for violations (equipment appears after it was abandoned)
+        result = allocations.copy()
+        abandoned = set()
+        current_eq = None
+
+        for i, eq in enumerate(result):
+            if current_eq is not None and eq != current_eq:
+                # Equipment changed - mark previous as abandoned
+                abandoned.add(current_eq)
+
+            if eq in abandoned:
+                # VIOLATION: Trying to return to abandoned equipment
+                # Find best alternative: current equipment or next in allowed list
+                section_id = ordered_sections[i]["id"]
+                eq_counts = section_exercise_counts.get(section_id, {})
+
+                # Priority: current_eq > mat > any non-abandoned equipment
+                if current_eq and eq_counts.get(current_eq, 0) > 0:
+                    result[i] = current_eq
+                elif "mat" in allowed_equipment and eq_counts.get("mat", 0) > 0:
+                    result[i] = "mat"
+                elif current_eq:
+                    # Keep current equipment even if no exercises (section will be empty)
+                    result[i] = current_eq
+                # else: keep the violating allocation, validation will catch it
+
+            current_eq = result[i]
+
+        return result
+
+    def _count_equipment_transitions(self, allocations: list[str]) -> int:
+        """Count equipment transitions (changes between sections)."""
+        transitions = 0
+        prev = None
+        for eq in allocations:
+            if prev and eq != prev:
+                transitions += 1
+            prev = eq
+        return transitions
+
     def _optimize_section_order(
         self,
         allowed_equipment: list[str],
@@ -380,23 +583,14 @@ class ClassBuilder:
         """
         Validate a generated class plan for rule violations.
         Returns (is_valid, list of violation messages).
-        Only counts empty sections as violations if exercises were available for that section.
+        ANY empty section is a violation - we should never present empty sections.
         """
         violations = []
 
-        # Check for empty sections - but only if exercises were available
+        # Check for empty sections - ANY empty section is a violation
         for section in class_plan["sections"]:
             if not section["exercises"]:
-                # Check if any exercises exist for this section with selected equipment+level
-                available = [
-                    ex for ex in self.exercises
-                    if ex.section == section["id"]
-                    and any(eq in (allowed_equipment or ["reformer"]) for eq in ex.equipment)
-                    and self._level_matches(ex.level, level)
-                ]
-                # Only count as violation if exercises were available but not selected
-                if available:
-                    violations.append(f"Empty section: {section['name']}")
+                violations.append(f"Empty section: {section['name']}")
 
         # Check transition count
         if class_plan["transitions"] > class_plan["max_transitions"]:
@@ -420,7 +614,7 @@ class ClassBuilder:
         level: str = "intermediate",
         allowed_equipment: list[str] = None,
         max_transitions: int = None,
-        max_retries: int = 10
+        max_retries: int = 50
     ) -> dict:
         """
         Generate a balanced class plan with optimized flow.
@@ -464,9 +658,13 @@ class ClassBuilder:
                 best_violation_count = len(violations)
                 best_plan = class_plan
 
-        # If no valid plan after all retries, return best attempt
-        # (This shouldn't happen often with good exercise coverage)
-        return best_plan if best_plan else class_plan
+        # Return best plan, but ALWAYS exclude empty sections
+        result = best_plan if best_plan else class_plan
+        result["sections"] = [s for s in result["sections"] if s["exercises"]]
+        # Renumber sections after filtering
+        for i, section in enumerate(result["sections"]):
+            section["order"] = i + 1
+        return result
 
     def _generate_class_attempt(
         self,
@@ -477,7 +675,14 @@ class ClassBuilder:
         max_transitions: int,
         max_equipment: int
     ) -> dict:
-        """Single attempt to generate a class plan."""
+        """
+        Single attempt to generate a class plan using EQUIPMENT BLOCK ALLOCATION.
+
+        Strategy:
+        1. Pre-allocate equipment to each section (maximize primary equipment)
+        2. Fill each section with ONLY its allocated equipment
+        3. Equipment flow is contiguous by design (no bouncing)
+        """
         # Group exercises by section for analysis
         exercises_by_section = {}
         for ex in self.exercises:
@@ -490,6 +695,11 @@ class ClassBuilder:
 
         # Build final section order
         ordered_sections = [FIXED_FIRST] + optimized_middle + [FIXED_LAST]
+
+        # PRE-ALLOCATE equipment to each section
+        equipment_allocations = self._allocate_equipment_blocks(
+            ordered_sections, allowed_equipment, level, max_transitions
+        )
 
         # Calculate time per section
         total_typical = sum(s["typical_minutes"] for s in ordered_sections)
@@ -508,10 +718,8 @@ class ClassBuilder:
         }
 
         current_equipment = None
-        equipment_used = set()
         last_spring = None
-        last_box = False  # Track if previous exercise used box
-        is_first_exercise = True  # Track first exercise to not count initial setup as transition
+        is_first_exercise = True
 
         for idx, section in enumerate(ordered_sections):
             section_minutes = section["typical_minutes"] * time_scale
@@ -520,142 +728,91 @@ class ClassBuilder:
             # Apply level modifier to exercise count
             section_seconds *= level_config["exercise_count_multiplier"]
 
-            # Get exercises for this section
+            # Get the PRE-ALLOCATED equipment for this section
+            allocated_equipment = equipment_allocations[idx]
+
+            # Get exercises for this section that use the ALLOCATED equipment
             available = [
                 ex for ex in self.exercises
                 if ex.section == section["id"]
-                and any(eq in allowed_equipment for eq in ex.equipment)
+                and allocated_equipment in ex.equipment
                 and self._level_matches(ex.level, level)
             ]
 
-            # No fallback - if no exercises match level+equipment, section stays empty
-            # This prevents mismatch between generator and dropdown options
+            # Shuffle to add variety
+            random.shuffle(available)
+
+            # Sort by spring setting preference (same spring first)
+            def spring_priority(ex):
+                ex_spring = ex.spring_setting if allocated_equipment != "mat" else ""
+                same_spring = 0 if (ex_spring == last_spring or not last_spring) else 1
+                return (same_spring, random.random())
+            available.sort(key=spring_priority)
 
             # Select exercises to fill section time
             selected = []
             remaining_time = section_seconds
-            section_has_exercise = False  # Ensure each section gets at least one exercise
+            section_has_exercise = False
 
-            while available and (remaining_time > 0 or not section_has_exercise):
-                # Prioritize reformer-capable exercises, then shuffle within priority
-                # This ensures reformer-based classes
-                def exercise_priority(ex):
-                    if "reformer" in ex.equipment:
-                        return (0, random.random())  # Highest priority with random tiebreaker
-                    elif ex.equipment != ["mat"]:
-                        return (1, random.random())  # Other spring equipment
-                    else:
-                        return (2, random.random())  # Mat-only exercises last
-                available.sort(key=exercise_priority)
-
-                # Try to find a valid exercise
-                found_exercise = False
-                selected_idx = None
-
-                for i, ex in enumerate(available):
-                    # Recalculate valid equipment for EACH exercise
-                    # Allow return to already-used equipment (especially reformer for reformer-based classes)
-                    # Equipment count is enforced separately below
-                    valid_equipment = set(allowed_equipment)
-
-                    # Skip if exercise doesn't work with valid equipment
-                    if not any(eq in valid_equipment for eq in ex.equipment):
-                        continue
-
-                    # Enforce equipment count limit
-                    current_eq_count = len(equipment_used) + (1 if current_equipment and current_equipment not in equipment_used else 0)
-                    exercise_would_add_new = not any(eq in equipment_used or eq == current_equipment for eq in ex.equipment)
-                    if exercise_would_add_new and current_eq_count >= max_equipment:
-                        continue
-
-                    if remaining_time <= 0 and section_has_exercise:
-                        break
-
-                    if ex.duration_seconds <= remaining_time or not section_has_exercise:
-                        # Pick equipment with weighted randomness - heavily favor reformer
-                        valid_eq = [e for e in ex.equipment if e in valid_equipment]
-                        if not valid_eq:
-                            continue
-
-                        # Priority order: reformer > other spring equipment > mat
-                        # Reformer should dominate (70%), other equipment for variety (30%)
-                        if "reformer" in valid_eq and random.random() < 0.70:
-                            equipment_choice = "reformer"
-                        elif current_equipment in valid_eq and current_equipment != "mat" and random.random() < 0.60:
-                            # Stay on current non-mat equipment 60% of time
-                            equipment_choice = current_equipment
-                        else:
-                            # Pick from available, but still prefer non-mat
-                            non_mat = [e for e in valid_eq if e != "mat"]
-                            if non_mat and random.random() < 0.85:
-                                equipment_choice = random.choice(non_mat)
-                            else:
-                                equipment_choice = random.choice(valid_eq)
-
-                        # Track transitions (equipment change OR spring change)
-                        # NOTE: Box changes are NOT transitions - box is a prop on reformer, not separate equipment
-                        has_equipment_transition = equipment_choice != current_equipment
-                        # Mat has NO springs - never count as spring transition when using mat
-                        effective_spring = ex.spring_setting if equipment_choice != "mat" else ""
-                        has_spring_transition = effective_spring and effective_spring != last_spring
-
-                        # Count transition if equipment OR spring changed (not first exercise)
-                        if not is_first_exercise and (has_equipment_transition or has_spring_transition):
-                            if class_plan["transitions"] >= max_transitions:
-                                continue
-                            class_plan["transitions"] += 1
-
-                        # Track equipment flow
-                        if has_equipment_transition:
-                            if current_equipment is not None:
-                                equipment_used.add(current_equipment)
-                            current_equipment = equipment_choice
-                            class_plan["equipment_flow"].append(equipment_choice)
-
-                        # Determine spring setting based on equipment choice
-                        # Mat exercises have NO springs - clear setting if using mat
-                        exercise_spring_setting = ex.spring_setting if equipment_choice != "mat" else ""
-
-                        # Update spring and box tracking
-                        if exercise_spring_setting:
-                            last_spring = exercise_spring_setting
-                        last_box = ex.uses_box
-
-                        is_first_exercise = False
-                        section_has_exercise = True
-
-                        selected.append({
-                            "id": ex.id,
-                            "name": ex.name,
-                            "equipment": equipment_choice,
-                            "spring_setting": exercise_spring_setting,
-                            "reps": ex.reps,
-                            "duration_seconds": ex.duration_seconds,
-                            "variations": ex.variations[:2] if ex.variations else [],
-                            "props": ex.props,
-                            "uses_box": ex.uses_box,
-                        })
-                        remaining_time -= ex.duration_seconds
-                        selected_idx = i
-                        found_exercise = True
-                        break
-
-                # Remove selected exercise from available list
-                if selected_idx is not None:
-                    available.pop(selected_idx)
-                else:
-                    # No valid exercise found, exit loop
+            for ex in available:
+                if remaining_time <= 0 and section_has_exercise:
                     break
 
-            # Always include section in output (even if empty - shows what needs exercises)
-            if selected or True:  # Always include section
-                class_plan["sections"].append({
-                    "id": section["id"],
-                    "name": section["name"],
-                    "order": idx + 1,
-                    "allocated_minutes": round(section_minutes, 1),
-                    "exercises": selected,
-                })
-                class_plan["total_exercises"] += len(selected)
+                if ex.duration_seconds <= remaining_time or not section_has_exercise:
+                    # Track equipment and spring transitions
+                    has_equipment_transition = allocated_equipment != current_equipment
+                    effective_spring = ex.spring_setting if allocated_equipment != "mat" else ""
+                    has_spring_transition = effective_spring and effective_spring != last_spring
+
+                    # ONLY count SPRING transitions against the limit
+                    # Equipment transitions are PRE-PLANNED by block allocation and don't count
+                    # CRITICAL: Always allow the FIRST exercise in each section (no skipping)
+                    if not is_first_exercise and has_spring_transition and not has_equipment_transition:
+                        # Skip if we've hit transition limit, BUT not if this is the first exercise in section
+                        if class_plan["transitions"] >= max_transitions and section_has_exercise:
+                            continue
+                        # Only increment if we're under the limit
+                        if class_plan["transitions"] < max_transitions:
+                            class_plan["transitions"] += 1
+
+                    # Track equipment flow
+                    if has_equipment_transition:
+                        current_equipment = allocated_equipment
+                        class_plan["equipment_flow"].append(allocated_equipment)
+                        # CRITICAL: Reset spring tracking on equipment change
+                        # Spring settings are equipment-specific (e.g., "2R" vs "2@2")
+                        # Different equipment = incomparable spring systems
+                        last_spring = None
+
+                    # Update spring tracking
+                    exercise_spring_setting = ex.spring_setting if allocated_equipment != "mat" else ""
+                    if exercise_spring_setting:
+                        last_spring = exercise_spring_setting
+
+                    is_first_exercise = False
+                    section_has_exercise = True
+
+                    selected.append({
+                        "id": ex.id,
+                        "name": ex.name,
+                        "equipment": allocated_equipment,
+                        "spring_setting": exercise_spring_setting,
+                        "reps": ex.reps,
+                        "duration_seconds": ex.duration_seconds,
+                        "variations": ex.variations[:2] if ex.variations else [],
+                        "props": ex.props,
+                        "uses_box": ex.uses_box,
+                    })
+                    remaining_time -= ex.duration_seconds
+
+            # Always include section in output
+            class_plan["sections"].append({
+                "id": section["id"],
+                "name": section["name"],
+                "order": idx + 1,
+                "allocated_minutes": round(section_minutes, 1),
+                "exercises": selected,
+            })
+            class_plan["total_exercises"] += len(selected)
 
         return class_plan
