@@ -53,6 +53,37 @@ EXPERIENCE_LEVELS = [
     {"id": "advanced_plus", "name": "Advanced+ (Level 2.5)", "level_num": 2.5, "rep_multiplier": 0.75, "exercise_count_multiplier": 1.25, "max_transitions": 8},
 ]
 
+# Transition times in seconds
+TRANSITION_TIMES = {
+    "spring_change": 15,
+    "box_add": 15,
+    "box_remove": 15,
+    # Equipment transitions depend on from/to equipment
+    "equipment_change": {
+        # From -> To: seconds
+        ("reformer", "chair"): 30,
+        ("reformer", "mat"): 20,
+        ("reformer", "springboard"): 25,
+        ("chair", "reformer"): 30,
+        ("chair", "mat"): 20,
+        ("chair", "springboard"): 25,
+        ("mat", "reformer"): 20,
+        ("mat", "chair"): 20,
+        ("mat", "springboard"): 20,
+        ("springboard", "reformer"): 25,
+        ("springboard", "chair"): 25,
+        ("springboard", "mat"): 20,
+        # TRX, BOSU, Barrel
+        ("reformer", "trx"): 30,
+        ("reformer", "bosu"): 25,
+        ("reformer", "barrel"): 30,
+        ("mat", "trx"): 15,
+        ("mat", "bosu"): 15,
+        ("mat", "barrel"): 20,
+        "default": 30,  # Fallback for any unlisted pair
+    },
+}
+
 
 @dataclass
 class Exercise:

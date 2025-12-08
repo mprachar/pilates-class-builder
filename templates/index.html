@@ -462,6 +462,24 @@
             letter-spacing: 0.5px;
         }
 
+        .equipment-selector {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .equipment-selector option {
+            color: #333;
+            background: white;
+        }
+
         /* Equipment-specific colors */
         .exercise-equipment.eq-reformer {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -845,6 +863,24 @@
         let currentClassData = null;
         let currentClassId = null;
         let exercisesBySection = {};
+        let transitionTimes = {
+            spring_change: 15,
+            box_add: 15,
+            box_remove: 15,
+            equipment_change: { default: 30 }
+        };
+
+        // Fetch transition times on load
+        fetch('/transition-times')
+            .then(res => res.json())
+            .then(data => { transitionTimes = data; })
+            .catch(err => console.log('Using default transition times'));
+
+        // Get equipment transition time
+        function getEquipmentTransitionTime(fromEquip, toEquip) {
+            const key = `${fromEquip}->${toEquip}`;
+            return transitionTimes.equipment_change[key] || transitionTimes.equipment_change.default || 30;
+        }
 
         function updateEquipmentStatus(equipmentId, status) {
             const item = document.getElementById(`eq-${equipmentId}`);
@@ -1082,34 +1118,67 @@
             // Track previous exercise across all sections for transition detection
             let prevExercise = null;
 
+            // Get available equipment for equipment selector
+            const equipmentSelection = getEquipmentSelections();
+            const availableEquipment = equipmentSelection.available;
+
             data.sections.forEach((section, sectionIdx) => {
                 const sectionDiv = document.createElement('div');
                 sectionDiv.className = 'section-card';
                 sectionDiv.dataset.sectionId = section.id;
 
+                // Calculate actual section time (exercises + transitions)
+                let sectionExerciseTime = 0;
+                let sectionTransitionTime = 0;
+
                 const exerciseListHtml = section.exercises.map((ex, exIdx) => {
                     const springDisplay = parseSpringDisplay(ex.spring_setting);
                     const sectionExercises = exercisesBySection[section.id] || [];
-                    const optionsHtml = sectionExercises.map(opt =>
-                        `<option value="${opt.id}" ${opt.id === ex.id ? 'selected' : ''}>${opt.name}</option>`
+
+                    // Build exercise options - only include exercises that match available equipment
+                    const filteredExercises = sectionExercises.filter(opt =>
+                        opt.equipment && opt.equipment.some(eq => availableEquipment.includes(eq))
+                    );
+                    const optionsHtml = filteredExercises.map(opt =>
+                        `<option value="${opt.id}" ${opt.id === ex.id ? 'selected' : ''}>${opt.name} (${opt.equipment.join('/')})</option>`
                     ).join('');
 
-                    // Detect if this is a transition (spring or equipment change only)
-                    // NOTE: Box changes are NOT transitions - box is a prop on reformer
+                    // Equipment selector options
+                    const equipmentOptionsHtml = availableEquipment.map(eq =>
+                        `<option value="${eq}" ${eq === ex.equipment ? 'selected' : ''}>${eq}</option>`
+                    ).join('');
+
+                    // Add exercise duration
+                    sectionExerciseTime += ex.duration_seconds;
+
+                    // Detect transitions with specific timing
                     let transitionHtml = '';
+                    let transitionSeconds = 0;
                     if (prevExercise) {
                         const springChanged = ex.spring_setting && ex.spring_setting !== prevExercise.spring_setting;
                         const equipmentChanged = ex.equipment !== prevExercise.equipment;
                         const boxChanged = !!ex.uses_box !== !!prevExercise.uses_box;
-                        if (springChanged || equipmentChanged) {
-                            const changes = [];
-                            if (equipmentChanged) changes.push('Equipment');
-                            if (springChanged) changes.push('Springs');
-                            transitionHtml = `<div class="transition-indicator">${changes.join(' + ')} Change (~30s)</div>`;
+
+                        const changes = [];
+                        if (equipmentChanged) {
+                            const eqTime = getEquipmentTransitionTime(prevExercise.equipment, ex.equipment);
+                            changes.push(`Equipment (${eqTime}s)`);
+                            transitionSeconds += eqTime;
                         }
-                        // Show box change as info note (not a transition)
+                        if (springChanged && !equipmentChanged) {
+                            // Only count spring change if NOT also changing equipment
+                            changes.push(`Springs (${transitionTimes.spring_change}s)`);
+                            transitionSeconds += transitionTimes.spring_change;
+                        }
                         if (boxChanged) {
-                            transitionHtml += `<div class="box-note" style="color:#805ad5;font-size:0.75rem;padding:2px 0;">${ex.uses_box ? '+ Add Box' : '- Remove Box'}</div>`;
+                            const boxTime = ex.uses_box ? transitionTimes.box_add : transitionTimes.box_remove;
+                            changes.push(`${ex.uses_box ? '+Box' : '-Box'} (${boxTime}s)`);
+                            transitionSeconds += boxTime;
+                        }
+
+                        if (changes.length > 0) {
+                            transitionHtml = `<div class="transition-indicator">${changes.join(' + ')} = ${transitionSeconds}s</div>`;
+                            sectionTransitionTime += transitionSeconds;
                         }
                     }
                     prevExercise = ex;
@@ -1121,7 +1190,7 @@
                                 <span class="drag-handle">&#9776;</span>
                                 <div class="exercise-main">
                                     <select class="exercise-select" onchange="changeExercise(this, '${section.id}', ${exIdx})">
-                                        ${optionsHtml}
+                                        ${optionsHtml || `<option value="${ex.id}">${ex.name}</option>`}
                                     </select>
                                 </div>
                                 <button class="remove-exercise" onclick="removeExercise('${section.id}', ${exIdx})">x</button>
@@ -1129,18 +1198,23 @@
                             <div class="exercise-row-2">
                                 ${springDisplay ? `<div class="spring-display">${springDisplay}</div>` : ''}
                                 ${ex.reps ? `<span class="exercise-reps">${ex.reps} reps</span>` : ''}
-                                <span class="exercise-equipment eq-${ex.equipment}">${ex.equipment}</span>
+                                <select class="equipment-selector" onchange="changeEquipment(this, '${section.id}', ${exIdx})" title="Change equipment">
+                                    ${equipmentOptionsHtml}
+                                </select>
                                 ${ex.uses_box ? '<span class="box-indicator">BOX</span>' : ''}
-                                <span class="exercise-duration">${Math.round(ex.duration_seconds / 60)} min</span>
+                                <span class="exercise-duration">${ex.duration_seconds}s</span>
                             </div>
                         </div>
                     `;
                 }).join('');
 
+                // Calculate actual section time in minutes
+                const actualSectionTime = Math.round((sectionExerciseTime + sectionTransitionTime) / 60 * 10) / 10;
+
                 sectionDiv.innerHTML = `
                     <div class="section-header">
                         <h3>${section.name}</h3>
-                        <span class="section-time">${section.allocated_minutes} min</span>
+                        <span class="section-time">${actualSectionTime} min</span>
                     </div>
                     <div class="exercise-list" data-section-id="${section.id}">
                         ${exerciseListHtml}
@@ -1192,6 +1266,28 @@
                     displayResults(currentClassData);
                     validatePlan(); // Auto-validate after change
                 }
+            }
+        }
+
+        function changeEquipment(selectEl, sectionId, exerciseIdx) {
+            const newEquipment = selectEl.value;
+
+            // Find section in currentClassData
+            const section = currentClassData.sections.find(s => s.id === sectionId);
+            if (section && section.exercises[exerciseIdx]) {
+                const exercise = section.exercises[exerciseIdx];
+
+                // Update equipment
+                exercise.equipment = newEquipment;
+
+                // Clear spring setting if moving to mat (mat has no springs)
+                if (newEquipment === 'mat') {
+                    exercise.spring_setting = '';
+                }
+
+                recalculateStats();
+                displayResults(currentClassData);
+                validatePlan(); // Auto-validate after change
             }
         }
 

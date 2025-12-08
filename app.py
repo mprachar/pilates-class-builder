@@ -5,7 +5,7 @@ Helps instructors build balanced Pilates classes with good flow.
 """
 
 from flask import Flask, render_template, request, jsonify
-from class_builder import ClassBuilder, CLASS_SECTIONS, EQUIPMENT_TYPES, EXPERIENCE_LEVELS
+from class_builder import ClassBuilder, CLASS_SECTIONS, EQUIPMENT_TYPES, EXPERIENCE_LEVELS, TRANSITION_TIMES
 import database as db
 
 app = Flask(__name__)
@@ -79,6 +79,25 @@ def exercises_by_section():
         result[section_id] = exercises
 
     return jsonify(result)
+
+
+@app.route('/transition-times')
+def get_transition_times():
+    """Get transition time configuration for frontend calculations."""
+    # Convert tuple keys to string format for JSON
+    equipment_changes = {}
+    for key, value in TRANSITION_TIMES["equipment_change"].items():
+        if isinstance(key, tuple):
+            equipment_changes[f"{key[0]}->{key[1]}"] = value
+        else:
+            equipment_changes[key] = value
+
+    return jsonify({
+        "spring_change": TRANSITION_TIMES["spring_change"],
+        "box_add": TRANSITION_TIMES["box_add"],
+        "box_remove": TRANSITION_TIMES["box_remove"],
+        "equipment_change": equipment_changes,
+    })
 
 
 # ============ Saved Classes API ============
