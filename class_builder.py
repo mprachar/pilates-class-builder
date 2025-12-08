@@ -394,10 +394,13 @@ class ClassBuilder:
 
                 # Decide how many sections use secondary equipment
                 # MORE AGGRESSIVE allocation since chair has fewer exercises than reformer
-                if pattern_roll > 0.55:  # 45% chance for high variety (4-6 sections)
-                    num_secondary = random.randint(4, min(6, len(secondary_eligible)))
-                else:  # 45% chance for medium variety (3-5 sections)
-                    num_secondary = random.randint(3, min(5, len(secondary_eligible)))
+                max_available = len(secondary_eligible)
+                if max_available == 0:
+                    num_secondary = 0
+                elif pattern_roll > 0.55:  # 45% chance for high variety
+                    num_secondary = random.randint(min(4, max_available), min(6, max_available))
+                else:  # 45% chance for medium variety
+                    num_secondary = random.randint(min(3, max_available), min(5, max_available))
 
                 # Choose starting position for secondary block
                 # Lower threshold (30%) to allow more secondary equipment usage
