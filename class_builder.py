@@ -583,7 +583,9 @@ class ClassBuilder:
                         # Track transitions (equipment change OR spring change)
                         # NOTE: Box changes are NOT transitions - box is a prop on reformer, not separate equipment
                         has_equipment_transition = equipment_choice != current_equipment
-                        has_spring_transition = ex.spring_setting and ex.spring_setting != last_spring
+                        # Mat has NO springs - never count as spring transition when using mat
+                        effective_spring = ex.spring_setting if equipment_choice != "mat" else ""
+                        has_spring_transition = effective_spring and effective_spring != last_spring
 
                         # Count transition if equipment OR spring changed (not first exercise)
                         if not is_first_exercise and (has_equipment_transition or has_spring_transition):
